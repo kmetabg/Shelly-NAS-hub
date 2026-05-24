@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/lib/auth-guard.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faces · HomeHub</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f1117;
+      --card-bg: #1a1d26;
+      --border:  #2a2d3a;
+      --accent:  #4f8ef7;
+      --red:     #e05c5c;
+      --green:   #4caf50;
+      --text:    #e0e0e0;
+      --muted:   #888;
+      --radius:  10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ─────────────────────────────────────── */
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    .stats { font-size: .82rem; color: var(--muted); }
+    .stats span { color: var(--text); font-weight: 600; }
+
+    nav { margin-left: auto; display: flex; gap: 8px; }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: .82rem;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: background .15s;
+    }
+    nav a:hover { background: var(--border); color: var(--text); }
+
+    .toolbar {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .toolbar label { font-size: .82rem; color: var(--muted); }
+    .toolbar select, .toolbar input[type=text] {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: .82rem;
+    }
+    .btn {
+      cursor: pointer;
+      border: none;
+      border-radius: 7px;
+      padding: 6px 14px;
+      font-size: .82rem;
+      font-weight: 500;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .82; }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .btn-primary { background: var(--accent);  color: #fff; }
+    .btn-danger  { background: var(--red);     color: #fff; }
+    .btn-neutral { background: var(--border);  color: var(--text); }
+    .btn-merge   { background: #7b5ea7;        color: #fff; }
+
+    /* ── Grid ────────────────────────────────────────── */
+    main {
+      flex: 1;
+      padding: 16px;
+    }
+    #empty-msg {
+      text-align: center;
+      color: var(--muted);
+      margin-top: 60px;
+      font-size: 1rem;
+      display: none;
+    }
+    .cluster-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .cluster-card {
+      background: var(--card-bg);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s;
+      position: relative;
+    }
+    .cluster-card:hover  { border-color: var(--accent); transform: translateY(-2px); }
+    .cluster-card.selected { border-color: #7b5ea7; }
+
+    .cluster-card img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      background: #111;
+      display: block;
+    }
+    .cluster-card .no-img {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #1e1e2e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+    }
+    .cluster-card .info {
+      padding: 7px 9px;
+    }
+    .cluster-card .name {
+      font-size: .82rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cluster-card .count {
+      font-size: .72rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .cluster-card .badge {
+      position: absolute;
+      top: 6px; right: 6px;
+      background: rgba(0,0,0,.65);
+      color: #fff;
+      font-size: .65rem;
+      border-radius: 4px;
+      padding: 2px 5px;
+    }
+
+    /* ── Modal ───────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.78);
+      z-index: 100;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 800px;
+      padding: 20px;
+      position: relative;
+    }
+    .modal-close {
+      position: absolute;
+      top: 12px; right: 14px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.4rem;
+      cursor: pointer;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal h2 { font-size: 1rem; margin-bottom: 14px; }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+    #inp-name {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 6px 12px;
+      font-size: .85rem;
+      flex: 1;
+      min-width: 140px;
+    }
+    #sel-merge {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 6px 10px;
+      font-size: .82rem;
+    }
+
+    .crops-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+      max-height: 55vh;
+      overflow-y: auto;
+    }
+    .crop-item {
+      border-radius: 7px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid var(--border);
+    }
+    .crop-item img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+      background: #111;
+    }
+    .crop-item .crop-ts {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(0,0,0,.6);
+      font-size: .62rem;
+      color: #ccc;
+      padding: 3px 5px;
+      text-align: center;
+    }
+
+    /* ── Merge select mode ───────────────────────────── */
+    #merge-banner {
+      display: none;
+      background: #7b5ea788;
+      border: 1px solid #7b5ea7;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: .84rem;
+      margin-bottom: 12px;
+      align-items: center;
+      gap: 10px;
+    }
+    #merge-banner.visible { display: flex; }
+
+    /* ── Toast ───────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      background: #222533;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: .85rem;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity .3s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>👤 Faces</h1>
+  <div class="stats" id="stats-bar">Loading…</div>
+  <nav>
+    <a href="/cameras.html">← Cameras</a>
+    <a href="/recordings.html">📼 Recordings</a>
+    <a href="/events.html">🎯 Events</a>
+  </nav>
+</header>
+
+<div class="toolbar">
+  <label>Filter:</label>
+  <select id="sel-filter" onchange="applyFilter()">
+    <option value="all">All</option>
+    <option value="named">Named</option>
+    <option value="unknown">Unknown</option>
+  </select>
+
+  <div id="merge-banner">
+    <span>Select a cluster to merge with <strong id="merge-src-name"></strong></span>
+    <button class="btn btn-neutral btn-sm" onclick="cancelMerge()">Cancel</button>
+  </div>
+
+  <div style="margin-left:auto; display:flex; gap:8px;">
+    <button class="btn btn-neutral" onclick="loadClusters()">↻ Refresh</button>
+    <button class="btn btn-danger"  onclick="openBulkFaceDelete()">🗑 Bulk delete…</button>
+  </div>
+</div>
+
+<!-- Bulk delete modal -->
+<div id="bulk-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:200; align-items:center; justify-content:center" onclick="if(event.target===this) closeBulkFaceDelete()">
+  <div style="background:#0f1f35; border:1px solid #1e3a5f; border-radius:12px; width:min(440px,92vw); padding:1.4rem; color:#e2eaf4; display:flex; flex-direction:column; gap:1rem">
+    <h2 style="font-size:1.05rem">🗑 Bulk delete faces</h2>
+
+    <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+      <input type="radio" name="bulk-mode" value="unknown" checked>
+      <span><strong>Unknown faces only</strong> (no name) — keeps identified faces</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+      <input type="radio" name="bulk-mode" value="all">
+      <span style="color:#f87171"><strong>ALL</strong> (named + unknown) — full reset</span>
+    </label>
+
+    <div id="bulk-result" style="display:none; padding:.6rem .8rem; border-radius:6px; font-size:.85rem; border:1px solid #1e3a5f"></div>
+
+    <div style="display:flex; justify-content:flex-end; gap:.5rem">
+      <button class="btn btn-neutral" onclick="closeBulkFaceDelete()">Cancel</button>
+      <button class="btn btn-danger"  id="bulk-confirm-btn" onclick="confirmBulkFaceDelete()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div id="empty-msg">No faces detected yet. The system automatically collects faces when people are detected.</div>
+  <div class="cluster-grid" id="grid"></div>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="maybeCloseModal(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h2 id="modal-title">Cluster</h2>
+
+    <div class="modal-actions">
+      <input type="text" id="inp-name" placeholder="Enter name (e.g. Mike)" />
+      <button class="btn btn-primary" onclick="saveName()">💾 Save</button>
+      <button class="btn btn-merge"   onclick="startMerge()">⊕ Merge with…</button>
+      <button class="btn btn-danger"  onclick="deleteCluster()">🗑 Delete</button>
+    </div>
+
+    <div class="crops-grid" id="modal-crops"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  let _clusters = [];
+  let _activeId  = null;
+  let _mergeMode = false;
+  let _mergeSrcId = null;
+
+  // ── Load clusters ───────────────────────────────────
+  async function loadClusters() {
+    try {
+      const [clusters, stats] = await Promise.all([
+        fetch('/api/faces/clusters').then(r => r.json()),
+        fetch('/api/faces/stats').then(r => r.json()),
+      ]);
+      _clusters = clusters;
+      updateStats(stats);
+      renderGrid();
+    } catch (e) {
+      console.error(e);
+      toast('Loading error');
+    }
+  }
+
+  function updateStats(s) {
+    document.getElementById('stats-bar').innerHTML =
+      `Clusters: <span>${s.total_clusters}</span> &nbsp;·&nbsp; ` +
+      `Named: <span>${s.named_clusters}</span> &nbsp;·&nbsp; ` +
+      `Crops: <span>${s.total_crops}</span>`;
+  }
+
+  // ── Render ──────────────────────────────────────────
+  function applyFilter() {
+    renderGrid();
+  }
+
+  function renderGrid() {
+    const filter = document.getElementById('sel-filter').value;
+    let list = _clusters;
+    if (filter === 'named')  list = list.filter(c =>  c.name);
+    if (filter === 'unknown') list = list.filter(c => !c.name);
+
+    const grid = document.getElementById('grid');
+    const empty = document.getElementById('empty-msg');
+
+    if (!list.length) {
+      grid.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    grid.innerHTML = list.map(c => {
+      const label = c.name ? c.name : `Unknown #${c.id}`;
+      const imgHtml = c.representative
+        ? `<img src="${c.representative}" alt="" loading="lazy" onerror="this.style.display='none';this.nextSibling.style.display='flex'">`
+        : '';
+      return `
+        <div class="cluster-card ${_mergeMode && c.id !== _mergeSrcId ? 'merge-target' : ''}"
+             id="card-${c.id}"
+             onclick="onCardClick(${c.id}, event)">
+          ${imgHtml}
+          <div class="no-img" style="${c.representative ? 'display:none' : ''}">👤</div>
+          <div class="badge">${c.face_count}</div>
+          <div class="info">
+            <div class="name" title="${label}">${label}</div>
+            <div class="count">${c.face_count} crop${c.face_count === 1 ? '' : 's'}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function onCardClick(id, e) {
+    if (_mergeMode && id !== _mergeSrcId) {
+      executeMerge(id);
+      return;
+    }
+    openModal(id);
+  }
+
+  // ── Modal ────────────────────────────────────────────
+  async function openModal(id) {
+    _activeId = id;
+    const c = _clusters.find(x => x.id === id);
+    const overlay = document.getElementById('modal-overlay');
+    const title   = document.getElementById('modal-title');
+    const crops   = document.getElementById('modal-crops');
+    const inp     = document.getElementById('inp-name');
+
+    title.textContent = c ? (c.name || `Unknown #${c.id}`) : `Cluster #${id}`;
+    inp.value = c?.name || '';
+    crops.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Loading…</div>';
+    overlay.classList.add('open');
+
+    try {
+      const list = await fetch(`/api/faces/clusters/${id}/crops`).then(r => r.json());
+      if (!list.length) {
+        crops.innerHTML = '<div style="color:var(--muted);font-size:.85rem">No crops</div>';
+        return;
+      }
+      crops.innerHTML = list.map(cr => {
+        const dt = cr.detected_at.replace('T', ' ').slice(0, 16);
+        const ch = cr.channel;
+        return `
+          <div class="crop-item">
+            <img src="${cr.image_url}" alt="" loading="lazy">
+            <div class="crop-ts">ch${ch} · ${dt}</div>
+          </div>`;
+      }).join('');
+    } catch(e) {
+      crops.innerHTML = '<div style="color:var(--red)">Error</div>';
+    }
+  }
+
+  function maybeCloseModal(e) {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+  }
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+    _activeId = null;
+  }
+
+  // ── Name ─────────────────────────────────────────────
+  async function saveName() {
+    if (!_activeId) return;
+    const name = document.getElementById('inp-name').value.trim();
+    if (!name) { toast('Enter a name'); return; }
+    try {
+      await fetch(`/api/faces/clusters/${_activeId}/name`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name}),
+      });
+      document.getElementById('modal-title').textContent = name;
+      const c = _clusters.find(x => x.id === _activeId);
+      if (c) c.name = name;
+      toast(`✓ Saved: ${name}`);
+      renderGrid();
+    } catch(e) { toast('Save error'); }
+  }
+
+  // ── Merge ─────────────────────────────────────────────
+  function startMerge() {
+    if (!_activeId) return;
+    _mergeSrcId = _activeId;
+    _mergeMode = true;
+    const c = _clusters.find(x => x.id === _mergeSrcId);
+    document.getElementById('merge-src-name').textContent = c?.name || `#${_mergeSrcId}`;
+    document.getElementById('merge-banner').classList.add('visible');
+    closeModal();
+    renderGrid();
+    toast('Select the cluster you want to merge with');
+  }
+
+  function cancelMerge() {
+    _mergeMode = false;
+    _mergeSrcId = null;
+    document.getElementById('merge-banner').classList.remove('visible');
+    renderGrid();
+  }
+
+  async function executeMerge(dstId) {
+    const srcId = _mergeSrcId;
+    cancelMerge();
+    try {
+      await fetch('/api/faces/clusters/merge', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({src_id: srcId, dst_id: dstId}),
+      });
+      toast('✓ Clusters merged');
+      loadClusters();
+    } catch(e) { toast('Merge error'); }
+  }
+
+  // ── Delete ────────────────────────────────────────────
+  async function deleteCluster() {
+    if (!_activeId) return;
+    if (!confirm(`Delete cluster #${_activeId}? All crops will be deleted.`)) return;
+    try {
+      const res = await fetch(`/api/faces/clusters/${_activeId}`, {method: 'DELETE'});
+      const j = await res.json();
+      closeModal();
+      toast(`✓ Deleted ${j.deleted_crops} crops`);
+      loadClusters();
+    } catch(e) { toast('Delete error'); }
+  }
+
+  // ── Bulk delete ─────────────────────────────────────────
+  function openBulkFaceDelete() {
+    document.getElementById("bulk-result").style.display = "none";
+    document.getElementById("bulk-modal").style.display  = "flex";
+  }
+  function closeBulkFaceDelete() {
+    document.getElementById("bulk-modal").style.display = "none";
+  }
+  async function confirmBulkFaceDelete() {
+    const mode = document.querySelector('input[name="bulk-mode"]:checked').value;
+    const keepNamed = mode === "unknown";
+    const msg = keepNamed
+      ? "Delete all UNKNOWN faces?\nNamed clusters are kept."
+      : "WARNING: ALL faces will be deleted (including named ones).\nThis action is irreversible!";
+    if (!confirm(msg)) return;
+
+    const btn = document.getElementById("bulk-confirm-btn");
+    btn.disabled = true; btn.textContent = "Deleting…";
+    const result = document.getElementById("bulk-result");
+    result.style.display = "block";
+    result.style.color   = "#fbbf24";
+    result.textContent   = "Deleting…";
+    try {
+      const r = await fetch(`/api/faces/clusters/bulk?keep_named=${keepNamed}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(await r.text());
+      const d = await r.json();
+      result.style.color = "#34d399";
+      result.textContent = `✓ Deleted ${d.deleted_clusters} clusters, ${d.deleted_crops} crops, ${d.deleted_files} files`;
+      btn.textContent    = "🗑 Delete";
+      btn.disabled       = false;
+      setTimeout(() => { closeBulkFaceDelete(); loadClusters(); }, 1500);
+    } catch (e) {
+      result.style.color = "#f87171";
+      result.textContent = `✗ ${e.message}`;
+      btn.textContent    = "🗑 Delete";
+      btn.disabled       = false;
+    }
+  }
+
+  // ── Toast ─────────────────────────────────────────────
+  let _toastTimer;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  }
+
+  // ── Keyboard ──────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (_mergeMode) cancelMerge();
+      else closeModal();
+    }
+    if (e.key === 'Enter' && document.getElementById('modal-overlay').classList.contains('open')) {
+      saveName();
+    }
+  });
+
+  // ── Init ──────────────────────────────────────────────
+  loadClusters();
+  setInterval(loadClusters, 60_000);   // refresh every minute
+</script>
+</body>
+</html>

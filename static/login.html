@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · HomeHub</title>
+  <style>
+    :root {
+      --bg:      #07111e;
+      --surface: #0d1f35;
+      --card:    #112240;
+      --border:  #1e3a5f;
+      --text:    #e2eaf4;
+      --muted:   #6b8cae;
+      --accent:  #38bdf8;
+      --err:     #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh; background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem 1.8rem;
+      width: min(360px, 92vw);
+      box-shadow: 0 12px 40px rgba(0,0,0,.5);
+    }
+    .logo {
+      text-align: center;
+      font-size: 2.2rem;
+      margin-bottom: .25rem;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: .25rem;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: .8rem;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
+    .field {
+      margin-bottom: .9rem;
+    }
+    .field label {
+      display: block;
+      font-size: .8rem; font-weight: 600;
+      color: var(--muted);
+      margin-bottom: .35rem;
+    }
+    .field input {
+      width: 100%;
+      padding: .7rem .85rem;
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-family: inherit; font-size: .95rem;
+    }
+    .field input:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(56,189,248,.15);
+    }
+    button {
+      width: 100%;
+      padding: .75rem;
+      background: var(--accent);
+      color: #042a3f;
+      font-size: .95rem; font-weight: 700;
+      border: none; border-radius: 6px;
+      cursor: pointer;
+      margin-top: .4rem;
+      transition: opacity .15s, transform .05s;
+    }
+    button:hover  { opacity: .92; }
+    button:active { transform: scale(.98); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .error {
+      color: var(--err);
+      font-size: .82rem;
+      margin-top: 1rem;
+      padding: .55rem .8rem;
+      border: 1px solid rgba(248,113,113,.4);
+      border-radius: 6px;
+      background: rgba(248,113,113,.08);
+      display: none;
+      text-align: center;
+    }
+    .error.show { display: block; }
+
+    .spinner {
+      display: inline-block; width: 13px; height: 13px;
+      border: 2px solid rgba(4,42,63,.3); border-top-color: #042a3f;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: .4rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<form class="card" id="login-form" onsubmit="return doLogin(event)">
+  <div class="logo">🏠</div>
+  <h1>HomeHub</h1>
+  <div class="subtitle">Sign in to continue</div>
+
+  <div class="field">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" autocomplete="username"
+           required autofocus />
+  </div>
+  <div class="field">
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autocomplete="current-password"
+           required />
+  </div>
+
+  <button type="submit" id="btn-login">Sign in</button>
+  <div class="error" id="error"></div>
+</form>
+
+<script>
+  function getNextUrl() {
+    const params = new URLSearchParams(location.search);
+    const next   = params.get("next") || "/";
+    return next.startsWith("/") ? next : "/";
+  }
+
+  async function doLogin(e) {
+    e.preventDefault();
+    const btn   = document.getElementById("btn-login");
+    const err   = document.getElementById("error");
+    err.classList.remove("show");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Signing in…';
+
+    try {
+      const r = await fetch("/api/auth/login", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          username: document.getElementById("username").value.trim(),
+          password: document.getElementById("password").value,
+        }),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        let msg = "Sign-in failed";
+        try {
+          const obj = JSON.parse(t);
+          msg = obj.detail || msg;
+        } catch {}
+        if (r.status === 401) msg = "Invalid username or password";
+        throw new Error(msg);
+      }
+      // Redirect to original target
+      location.href = getNextUrl();
+    } catch (e) {
+      err.textContent = e.message;
+      err.classList.add("show");
+      btn.disabled = false;
+      btn.textContent = "Sign in";
+    }
+    return false;
+  }
+
+  // Ако вече сме logged-in → redirect веднага
+  fetch("/api/auth/whoami").then(r => r.json()).then(d => {
+    if (d.auth_enabled === false) {
+      // auth изключен — върни към home
+      location.href = "/";
+    } else if (d.user) {
+      location.href = getNextUrl();
+    }
+  }).catch(() => {});
+</script>
+</body>
+</html>

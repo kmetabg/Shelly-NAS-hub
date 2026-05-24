@@ -1,0 +1,70 @@
+services:
+
+  # FastAPI / uvicorn — на bridge мрежа (за прости setup-и).
+  # ВАЖНО: ако ползваш Shelly камери с WebRTC, превключи на host network mode
+  # (network_mode: host) — иначе ICE кандидатите от browser-а няма да достигат
+  # до контейнера. WebRTC изисква UDP в широк диапазон портове.
+  app:
+    build: .
+    container_name: shelly-nas-hub-app
+    expose:
+      - "8080"
+    environment:
+      TZ:                  "${TZ:-Europe/Sofia}"
+      DATA_DIR:            /data
+      # ── Initial NVR seeding ───────────────────────────────────────────
+      NVR_HOST:            "${NVR_HOST:-}"
+      NVR_USER:            "${NVR_USER:-admin}"
+      NVR_PASSWORD:        "${NVR_PASSWORD:-}"
+      NVR_CHANNELS:        "${NVR_CHANNELS:-}"
+      NVR_NAMES:           "${NVR_NAMES:-}"
+      NVR_CACHE_S:         "${NVR_CACHE_S:-10}"
+      # ── AI Detection ─────────────────────────────────────────────────
+      NVR_DETECT_ENABLED:    "${NVR_DETECT_ENABLED:-true}"
+      NVR_DETECT_MODEL:      "${NVR_DETECT_MODEL:-yolo26s.pt}"
+      NVR_DETECT_INTERVAL:   "${NVR_DETECT_INTERVAL:-3}"
+      NVR_DETECT_COOLDOWN:   "${NVR_DETECT_COOLDOWN:-30}"
+      NVR_DETECT_CLASSES:    "${NVR_DETECT_CLASSES:-0,2,3,7,15,16}"
+      NVR_DETECT_CONFIDENCE: "${NVR_DETECT_CONFIDENCE:-0.45}"
+      NVR_DETECT_RETENTION:  "${NVR_DETECT_RETENTION:-7}"
+      NVR_DETECT_HQ:         "${NVR_DETECT_HQ:-true}"
+      # ── 24/7 Recording ────────────────────────────────────────────────
+      RECORDING_ENABLED:        "${RECORDING_ENABLED:-true}"
+      RECORDING_PATH:           "/recordings"
+      RECORDING_RETENTION_DAYS: "${RECORDING_RETENTION_DAYS:-7}"
+      RECORDING_SEGMENT_S:      "${RECORDING_SEGMENT_S:-60}"
+      RECORDING_QUALITY:        "${RECORDING_QUALITY:-main}"
+      RECORDING_AUDIO:          "${RECORDING_AUDIO:-true}"
+      RECORDING_DISK_LIMIT_PCT: "${RECORDING_DISK_LIMIT_PCT:-90}"
+      # ── Authentication (single-user, optional) ───────────────────────
+      HOMEHUB_AUTH_ENABLED:           "${HOMEHUB_AUTH_ENABLED:-false}"
+      HOMEHUB_AUTH_USER:              "${HOMEHUB_AUTH_USER:-admin}"
+      HOMEHUB_AUTH_PASSWORD_HASH:     "${HOMEHUB_AUTH_PASSWORD_HASH:-}"
+      HOMEHUB_AUTH_SECRET:            "${HOMEHUB_AUTH_SECRET:-}"
+      HOMEHUB_AUTH_SESSION_TTL_HOURS: "${HOMEHUB_AUTH_SESSION_TTL_HOURS:-720}"
+    volumes:
+      - shelly_nas_hub_data:/data
+      - shelly_nas_hub_events:/data/events
+      # Recordings — задължително mount-вай към reasonably-sized директория
+      # (24/7 recording с 7+ камери може да генерира 100-200 GB / седмица).
+      # Препоръчително: dedicated SSD/HDD volume.
+      - ${RECORDINGS_PATH:-./recordings}:/recordings
+    restart: unless-stopped
+
+  # nginx — публикува port 80, сервира static + reverse proxy към FastAPI.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: shelly-nas-hub-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/www/static:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  shelly_nas_hub_data:    # SQLite registry + history + face crops
+  shelly_nas_hub_events:  # Detection event images (retention-limited)

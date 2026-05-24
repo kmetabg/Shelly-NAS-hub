@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/lib/auth-guard.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Recordings · HomeHub</title>
+<style>
+  :root {
+    --bg:      #07111e;
+    --surface: #0d1f35;
+    --card:    #112240;
+    --border:  #1e3a5f;
+    --text:    #e2eaf4;
+    --muted:   #6b8cae;
+    --accent:  #38bdf8;
+    --ok:      #34d399;
+    --warn:    #fbbf24;
+    --err:     #f87171;
+    --r:       8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #000; color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* Header */
+  header {
+    flex-shrink: 0;
+    padding: .5rem .9rem;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-size: .95rem; font-weight: 600; color: #fff;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  header .nav { display: flex; gap: .35rem; }
+  header .nav a {
+    font-size: .72rem; color:#cde; text-decoration: none;
+    padding: .25rem .6rem;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: rgba(0,0,0,.4);
+    transition: background .15s, border-color .15s;
+  }
+  header .nav a:hover { background: rgba(56,189,248,.2); border-color: var(--accent); }
+
+  /* Toolbar */
+  .toolbar {
+    flex-shrink: 0;
+    padding: .5rem .9rem;
+    display: flex; align-items: center; flex-wrap: wrap; gap: .8rem;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    font-size: .85rem;
+  }
+  .toolbar label { color: var(--muted); margin-right: .3rem; }
+  .toolbar select, .toolbar input[type=date] {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: .3rem .5rem; font-family: inherit; font-size: .85rem;
+    color-scheme: dark;
+  }
+  .toolbar .stat { color: var(--muted); font-size: .78rem; }
+  .toolbar .stat b { color: var(--text); font-weight: 600; }
+  .toolbar .live-pill {
+    background: rgba(52,211,153,.15);
+    color: var(--ok);
+    border: 1px solid var(--ok);
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    font-size: .7rem;
+    font-weight: 600;
+  }
+  .toolbar .live-pill.off {
+    background: rgba(107,140,174,.15);
+    color: var(--muted); border-color: var(--muted);
+  }
+
+  /* Player area */
+  .player-wrap {
+    flex: 1; min-height: 0;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  video {
+    width: 100%; height: 100%;
+    object-fit: contain; background: #000;
+  }
+  .player-overlay {
+    position: absolute; top: .6rem; left: .6rem;
+    background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+    color: #fff;
+    padding: .3rem .7rem;
+    border-radius: 5px;
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  .player-empty {
+    color: var(--muted);
+    text-align: center;
+    font-size: .9rem;
+  }
+
+  /* Timeline */
+  .timeline-wrap {
+    flex-shrink: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: .5rem .9rem .7rem;
+  }
+  .tl-info {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .72rem; color: var(--muted);
+    margin-bottom: .35rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .tl-info .tl-cur { color: #fff; font-size: .9rem; font-weight: 600; }
+  .tl-controls { display: flex; gap: .35rem; }
+  .tl-btn {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: .15rem .5rem; cursor: pointer; font-size: .72rem;
+    transition: background .15s;
+  }
+  .tl-btn:hover { background: rgba(56,189,248,.2); }
+  .tl-btn.primary { background: rgba(56,189,248,.25); border-color: var(--accent); color: #fff; }
+
+  .timeline {
+    position: relative;
+    height: 56px;
+    background: #07111e;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+    overflow: hidden;
+    user-select: none;
+  }
+  /* Hour markers — every hour */
+  .tl-hour {
+    position: absolute; top: 0; bottom: 0;
+    border-left: 1px dashed rgba(107,140,174,.3);
+    width: 0;
+  }
+  .tl-hour-label {
+    position: absolute; top: 2px;
+    font-size: 9px;
+    color: rgba(107,140,174,.7);
+    transform: translateX(2px);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Recorded segments — blue strip bottom 1/3 */
+  .tl-segments {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 22px;
+    pointer-events: none;
+  }
+  .tl-segment {
+    position: absolute; bottom: 0; height: 100%;
+    background: linear-gradient(180deg, rgba(56,189,248,.45) 0%, rgba(56,189,248,.7) 100%);
+    border-radius: 1px;
+  }
+  /* Event markers — pin top 2/3 */
+  .tl-event {
+    position: absolute; top: 4px; bottom: 24px;
+    width: 3px;
+    cursor: pointer;
+    pointer-events: auto;
+    border-radius: 2px;
+    transition: width .15s;
+  }
+  .tl-event:hover { width: 6px; z-index: 10; }
+  .tl-event.person  { background: var(--err); }
+  .tl-event.car     { background: var(--accent); }
+  .tl-event.dog     { background: var(--ok); }
+  .tl-event.cat     { background: var(--warn); }
+  .tl-event.default { background: var(--muted); }
+
+  /* Legend */
+  .tl-legend {
+    display: flex; gap: .8rem; align-items: center;
+    font-size: .68rem; color: var(--muted);
+    margin-top: .35rem;
+  }
+  .tl-legend .lg-item { display: inline-flex; align-items: center; gap: .25rem; }
+  .tl-legend .lg-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+  }
+  .lg-dot.person { background: var(--err); }
+  .lg-dot.car    { background: var(--accent); }
+  .lg-dot.dog    { background: var(--ok); }
+  .lg-dot.cat    { background: var(--warn); }
+  .lg-dot.default{ background: var(--muted); }
+  .lg-dot.seg    { background: rgba(56,189,248,.7); border-radius: 1px; }
+
+  /* Playhead */
+  .tl-playhead {
+    position: absolute; top: -2px; bottom: -2px;
+    width: 2px;
+    background: #fff;
+    pointer-events: none;
+    box-shadow: 0 0 6px rgba(255,255,255,.6);
+    z-index: 20;
+  }
+  .tl-playhead::before {
+    content: "";
+    position: absolute; top: -3px; left: -4px;
+    width: 10px; height: 10px;
+    background: #fff;
+    transform: rotate(45deg);
+    border-radius: 1px;
+  }
+
+  /* Tooltip for event */
+  .tl-tooltip {
+    position: absolute;
+    background: rgba(0,0,0,.92);
+    color: #fff;
+    padding: .35rem .6rem;
+    border-radius: 5px;
+    font-size: .72rem;
+    border: 1px solid var(--border);
+    pointer-events: none;
+    z-index: 100;
+    white-space: nowrap;
+    transform: translate(-50%, -100%);
+    margin-top: -6px;
+    display: none;
+  }
+  .tl-tooltip.show { display: block; }
+  .tl-tooltip b { color: var(--accent); }
+
+  /* Loading state */
+  .loading {
+    color: var(--muted);
+    text-align: center;
+    padding: 1rem;
+    font-size: .85rem;
+  }
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    vertical-align: -3px;
+    margin-right: .4rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📼 Recordings <span style="font-weight: 400; color: var(--muted); font-size: .8rem;">— 24/7 timeline</span></h1>
+  <nav class="nav">
+    <a href="/cameras.html">📷 Cameras</a>
+    <a href="/events.html">🎯 Events</a>
+    <a href="/faces.html">👤 Faces</a>
+    <a href="/">← Home</a>
+  </nav>
+</header>
+
+<div class="toolbar">
+  <div>
+    <label>Camera</label>
+    <select id="sel-cam"></select>
+  </div>
+  <div>
+    <label>Date</label>
+    <input type="date" id="sel-date" />
+  </div>
+  <div class="stat" id="stat-segments">—</div>
+  <div class="stat" id="stat-events">—</div>
+  <div class="stat" id="stat-disk" style="margin-left:auto"></div>
+  <span class="live-pill off" id="live-pill">●  …</span>
+  <button class="tl-btn" id="btn-cams-panel" title="Manage cameras">⚙ Manage</button>
+</div>
+
+<!-- Manage modal -->
+<div id="cams-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1rem 1.2rem; min-width:420px; max-width:90vw;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem;">
+      <h3 style="font-size:1rem; color:#fff;">⚙ Recording controls</h3>
+      <button class="tl-btn" onclick="document.getElementById('cams-modal').style.display='none'">✕</button>
+    </div>
+    <div id="cams-list" style="font-size:.85rem;"></div>
+    <p style="font-size:.7rem; color:var(--muted); margin-top:.6rem;">
+      When disabled, recording stops immediately. Live view in "📷 Cameras" will use a new RTSP stream instead of shared.
+    </p>
+
+    <hr style="border:none; border-top:1px solid var(--border); margin:1rem 0">
+
+    <div style="font-weight:600; margin-bottom:.5rem; color:#fff">🗑 Bulk delete recordings</div>
+    <div style="display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:.6rem">
+      <label style="font-size:.8rem; color:var(--muted)">Older than:</label>
+      <select id="rec-bulk-days" style="padding:.35rem .5rem; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:4px;">
+        <option value="1">1 day</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+      </select>
+      <label style="font-size:.8rem; color:var(--muted)">Camera:</label>
+      <select id="rec-bulk-channel" style="padding:.35rem .5rem; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:4px;">
+        <option value="">All</option>
+      </select>
+      <button class="tl-btn" onclick="confirmRecordingsBulkDelete()" style="background:rgba(248,113,113,.2); border-color:#f87171; color:#fff">Delete</button>
+    </div>
+    <div id="rec-bulk-result" style="font-size:.8rem; display:none"></div>
+  </div>
+</div>
+
+<div class="player-wrap">
+  <video id="player" controls preload="metadata" playsinline></video>
+  <div class="player-empty" id="player-empty">Select a camera and click the timeline to play</div>
+  <div class="player-overlay" id="player-overlay" style="display:none"></div>
+</div>
+
+<div class="timeline-wrap">
+  <div class="tl-info">
+    <div>00:00:00<span style="color:var(--muted)"> ← timeline → </span>23:59:59</div>
+    <div class="tl-cur" id="tl-cur">—:—:—</div>
+    <div class="tl-controls">
+      <button class="tl-btn" id="btn-prev-event" title="Previous event">⟵ event</button>
+      <button class="tl-btn" id="btn-next-event" title="Next event">event ⟶</button>
+      <button class="tl-btn"           id="btn-speed-1">1×</button>
+      <button class="tl-btn"           id="btn-speed-2">2×</button>
+      <button class="tl-btn"           id="btn-speed-4">4×</button>
+      <button class="tl-btn primary"   id="btn-jump-now" title="Jump to now">now</button>
+    </div>
+  </div>
+  <div class="timeline" id="timeline">
+    <div class="tl-segments" id="tl-segments"></div>
+    <div class="tl-playhead" id="tl-playhead" style="display:none"></div>
+    <div class="tl-tooltip"  id="tl-tooltip"></div>
+  </div>
+  <div class="tl-legend">
+    <span class="lg-item"><span class="lg-dot seg"></span>recorded segment</span>
+    <span style="opacity:.5">·</span>
+    <span class="lg-item"><span class="lg-dot person"></span>Person</span>
+    <span class="lg-item"><span class="lg-dot car"></span>Car</span>
+    <span class="lg-item"><span class="lg-dot dog"></span>Dog</span>
+    <span class="lg-item"><span class="lg-dot cat"></span>Cat</span>
+    <span class="lg-item"><span class="lg-dot default"></span>Other</span>
+  </div>
+</div>
+
+<script>
+  /* ── constants ── */
+  const SEC_PER_DAY     = 24 * 3600;
+  const LABEL_BG        = {
+    person:"Person", car:"Car", motorcycle:"Motorcycle", truck:"Truck",
+    bus:"Bus", cat:"Cat", dog:"Dog", bicycle:"Bicycle",
+  };
+
+  /* ── state ── */
+  let _cameras = [];      // from /api/recordings/cameras
+  let _curCh   = null;
+  let _curDate = null;    // YYYY-MM-DD
+  let _segs    = [];      // [{ts, hour, min, size, url}]
+  let _events  = [];      // [{id, ts, labels, faces}]
+  let _curSegStart = null; // unix ts of the currently playing segment
+
+  /* ── helpers ── */
+  const pad   = n => String(n).padStart(2, "0");
+  const fmtHMS = sec => `${pad(Math.floor(sec/3600))}:${pad(Math.floor(sec/60)%60)}:${pad(Math.floor(sec)%60)}`;
+  function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function isoToSecOfDayLocal(iso) {
+    // Universal: accepts ISO with or without TZ marker.
+    // Result is second-of-day in LOCAL timezone (browser).
+    const d = new Date(iso);
+    return d.getHours()*3600 + d.getMinutes()*60 + d.getSeconds();
+  }
+  // Backward compat alias
+  const isoToSecOfDay = isoToSecOfDayLocal;
+
+  /* ── init ── */
+  async function init() {
+    await loadCamerasList();
+    const today = todayStr();
+    document.getElementById("sel-date").value = today;
+    document.getElementById("sel-date").max   = today;
+    _curDate = today;  // ← important: must be set BEFORE loadTimeline
+    const supported = _cameras.filter(c => c.supported !== false);
+    if (supported.length) {
+      _curCh = supported[0].channel;
+      document.getElementById("sel-cam").value = _curCh;
+      await loadTimeline();
+      autoSeekToNow();
+    }
+    bindUI();
+    setInterval(loadCamerasList, 30000);
+    setInterval(refreshTimelineIfToday, 30000);
+  }
+
+  /* Auto-seek to the closest segment before the current moment. */
+  function autoSeekToNow() {
+    if (!_segs.length) {
+      document.getElementById("player-empty").textContent =
+        "No segments available for this date (recording may still be buffering — wait 1-2 min)";
+      return;
+    }
+    if (_curDate !== todayStr()) {
+      const last = _segs[_segs.length - 1];
+      playSegment(last, 0);
+      return;
+    }
+    // Today: take the second-to-last ready segment (the last one is usually still being written)
+    const target = _segs[_segs.length - (_segs.length > 1 ? 2 : 1)];
+    playSegment(target, 0);
+  }
+
+  async function loadCamerasList() {
+    try {
+      const r = await fetch("/api/recordings/cameras");
+      const d = await r.json();
+      _cameras = d.cameras || [];
+
+      // Populate select — only supported (NVR), Shelly are in Manage modal
+      const sel = document.getElementById("sel-cam");
+      const cur = sel.value;
+      const supported = _cameras.filter(c => c.supported !== false);
+      const expectedCount = supported.length;
+      if (sel.children.length !== expectedCount) {
+        sel.innerHTML = supported.map(c =>
+          `<option value="${c.channel}">${c.name} (ch${c.channel})</option>`
+        ).join("");
+        if (cur) sel.value = cur;
+      }
+
+      // Disk info
+      const disk = d.disk;
+      const diskEl = document.getElementById("stat-disk");
+      if (disk) {
+        const cls = disk.used_pct >= disk.limit_pct ? "color:var(--err)"
+                  : disk.used_pct >= 80              ? "color:var(--warn)"
+                  : "";
+        diskEl.innerHTML = `Disk: <b style="${cls}">${disk.used_gb} / ${disk.total_gb} GB</b> (${disk.used_pct}%)`;
+      } else {
+        diskEl.textContent = "";
+      }
+
+      // Live pill
+      const cur_cam = _cameras.find(c => c.channel === _curCh);
+      const pill    = document.getElementById("live-pill");
+      if (cur_cam) {
+        if (cur_cam.active) {
+          pill.className   = "live-pill";
+          pill.textContent = `● recording · ${cur_cam.restarts ? "rs:"+cur_cam.restarts : ""}`;
+        } else {
+          pill.className   = "live-pill off";
+          pill.textContent = "● inactive";
+        }
+      }
+    } catch (e) { console.warn("loadCameras:", e); }
+  }
+
+  async function loadTimeline() {
+    if (!_curCh || !_curDate) return;
+    document.getElementById("stat-segments").textContent = "Loading…";
+    try {
+      const r = await fetch(`/api/recordings/${_curCh}/timeline?date=${_curDate}`);
+      const d = await r.json();
+      _segs   = d.segments || [];
+      _events = d.events   || [];
+      renderTimeline();
+      const totalMin = _segs.length;
+      const hours    = Math.floor(totalMin / 60);
+      const mins     = totalMin % 60;
+      document.getElementById("stat-segments").innerHTML = `<b>${totalMin}</b> segments (${hours}h ${mins}min)`;
+      document.getElementById("stat-events").innerHTML   = `<b>${_events.length}</b> events`;
+    } catch (e) {
+      console.warn("timeline:", e);
+      document.getElementById("stat-segments").textContent = "Error";
+    }
+  }
+
+  function refreshTimelineIfToday() {
+    if (_curDate === todayStr()) loadTimeline();
+  }
+
+  /* ── render timeline ── */
+  function renderTimeline() {
+    const tl = document.getElementById("timeline");
+
+    // Remove old hour markers and events
+    tl.querySelectorAll(".tl-hour, .tl-hour-label, .tl-event").forEach(el => el.remove());
+
+    // Hour markers
+    for (let h = 0; h <= 24; h++) {
+      const pct = (h * 3600) / SEC_PER_DAY * 100;
+      const line = document.createElement("div");
+      line.className = "tl-hour";
+      line.style.left = pct + "%";
+      tl.appendChild(line);
+
+      if (h % 3 === 0 && h < 24) {
+        const lbl = document.createElement("div");
+        lbl.className = "tl-hour-label";
+        lbl.textContent = pad(h);
+        lbl.style.left = pct + "%";
+        tl.appendChild(lbl);
+      }
+    }
+
+    // Recorded segments
+    const segWrap = document.getElementById("tl-segments");
+    segWrap.innerHTML = "";
+    _segs.forEach(s => {
+      const startSec = s.hour * 3600 + s.min * 60;
+      const widthSec = 60;  // 1 minute
+      const left  = (startSec / SEC_PER_DAY) * 100;
+      const width = (widthSec / SEC_PER_DAY) * 100;
+      const div = document.createElement("div");
+      div.className = "tl-segment";
+      div.style.left  = left + "%";
+      div.style.width = `calc(${width}% + 1px)`;
+      segWrap.appendChild(div);
+    });
+
+    // Event markers
+    _events.forEach(ev => {
+      const sec = isoToSecOfDay(ev.ts);
+      if (sec < 0 || sec >= SEC_PER_DAY) return;
+      const pct = (sec / SEC_PER_DAY) * 100;
+      const div = document.createElement("div");
+      const primaryLabel = (ev.labels && ev.labels[0]) || "default";
+      const cls = ["person","car","dog","cat"].includes(primaryLabel) ? primaryLabel : "default";
+      div.className = `tl-event ${cls}`;
+      div.style.left = `calc(${pct}% - 1.5px)`;
+      div.dataset.ts = ev.ts;
+      div.dataset.id = ev.id;
+      div.title = `${ev.labels.map(l => LABEL_BG[l]||l).join(", ")} @ ${ev.ts.slice(11,19)}`;
+      div.addEventListener("click", e => {
+        e.stopPropagation();
+        seekToSec(sec);
+      });
+      div.addEventListener("mouseenter", e => showEventTip(ev, pct));
+      div.addEventListener("mouseleave", hideTip);
+      tl.appendChild(div);
+    });
+  }
+
+  /* ── seek and playback ── */
+  function seekToSec(sec) {
+    const wholeMin    = Math.floor(sec / 60);
+    const offsetInMin = sec - wholeMin * 60;
+    const hh = Math.floor(wholeMin / 60);
+    const mm = wholeMin % 60;
+    // Find this exact segment
+    const seg = _segs.find(s => s.hour === hh && s.min === mm);
+    if (!seg) {
+      console.warn("No segment for", hh, mm);
+      // Find the closest later one
+      const nextSeg = _segs.find(s => (s.hour*60+s.min) > wholeMin);
+      if (nextSeg) playSegment(nextSeg, 0);
+      return;
+    }
+    playSegment(seg, offsetInMin);
+  }
+
+  function playSegment(seg, offsetSec = 0) {
+    const player = document.getElementById("player");
+    const url    = `${seg.url}#t=${offsetSec}`;
+    player.src   = url;
+    _curSegStart = seg.hour * 3600 + seg.min * 60;
+    document.getElementById("player-empty").style.display = "none";
+    document.getElementById("player-overlay").style.display = "block";
+    player.play().catch(e => console.warn("play:", e));
+    updatePlayhead(_curSegStart + offsetSec);
+  }
+
+  function updatePlayhead(sec) {
+    const ph = document.getElementById("tl-playhead");
+    if (sec === null || sec === undefined) {
+      ph.style.display = "none";
+      return;
+    }
+    const pct = (sec / SEC_PER_DAY) * 100;
+    ph.style.display = "block";
+    ph.style.left = `calc(${pct}% - 1px)`;
+    document.getElementById("tl-cur").textContent = fmtHMS(sec);
+    const ov = document.getElementById("player-overlay");
+    if (ov) ov.textContent = `${_curDate}  ${fmtHMS(sec)}`;
+  }
+
+  /* ── auto-advance to next segment ── */
+  function bindPlayerEvents() {
+    const player = document.getElementById("player");
+    player.addEventListener("timeupdate", () => {
+      if (_curSegStart === null) return;
+      updatePlayhead(_curSegStart + player.currentTime);
+    });
+    player.addEventListener("ended", () => {
+      if (_curSegStart === null) return;
+      const curMin   = Math.floor(_curSegStart / 60);
+      const nextSeg  = _segs.find(s => (s.hour*60 + s.min) > curMin);
+      if (nextSeg) playSegment(nextSeg, 0);
+    });
+  }
+
+  /* ── tooltip ── */
+  function showEventTip(ev, pct) {
+    const tt = document.getElementById("tl-tooltip");
+    const labels = ev.labels.map(l => LABEL_BG[l]||l).join(", ");
+    let faces = "";
+    if (ev.faces && ev.faces.length) {
+      const named = ev.faces.filter(f => f.name).map(f => f.name);
+      const unk   = ev.faces.filter(f => !f.name).length;
+      const parts = [];
+      if (named.length) parts.push(named.join(", "));
+      if (unk > 0)      parts.push(`${unk}× unknown`);
+      faces = `<br/>👤 ${parts.join(", ")}`;
+    }
+    tt.innerHTML = `<b>${ev.ts.slice(11,19)}</b> · ${labels}${faces}`;
+    tt.style.left = pct + "%";
+    tt.classList.add("show");
+  }
+  function hideTip() {
+    document.getElementById("tl-tooltip").classList.remove("show");
+  }
+
+  /* ── Manage panel ── */
+  function renderCamsPanel() {
+    const list = document.getElementById("cams-list");
+    list.innerHTML = _cameras.map(c => {
+      const sizeMB = (c.size_bytes / 1e6).toFixed(0);
+      if (c.supported === false) {
+        return `
+          <div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .2rem; border-bottom:1px solid var(--border); opacity:.55;">
+            <div style="flex:1">
+              <div style="font-weight:600;">${c.name} <span style="font-size:.7rem; color:var(--muted); font-weight:400;">(${c.kind || "?"})</span></div>
+              <div style="font-size:.7rem; color:var(--muted)">ch${c.channel} · ${c.reason || "not supported"}</div>
+            </div>
+            <label style="display:inline-flex; align-items:center; gap:.4rem; cursor:not-allowed;" title="${c.reason || ""}">
+              <input type="checkbox" disabled
+                     style="width:38px; height:22px; cursor:not-allowed; accent-color:var(--muted);">
+            </label>
+          </div>
+        `;
+      }
+      const status = c.armed
+        ? (c.active ? `<span style="color:var(--ok)">● recording</span>` : `<span style="color:var(--warn)">● starting…</span>`)
+        : `<span style="color:var(--muted)">○ off</span>`;
+      return `
+        <div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .2rem; border-bottom:1px solid var(--border);">
+          <div style="flex:1">
+            <div style="font-weight:600;">${c.name}</div>
+            <div style="font-size:.72rem; color:var(--muted)">ch${c.channel} · ${sizeMB} MB · ${status}</div>
+          </div>
+          <label style="display:inline-flex; align-items:center; gap:.4rem; cursor:pointer;">
+            <input type="checkbox" ${c.armed ? "checked" : ""}
+                   onchange="toggleArm(${c.channel}, this.checked)"
+                   style="width:38px; height:22px; cursor:pointer; accent-color:var(--accent);">
+          </label>
+        </div>
+      `;
+    }).join("");
+  }
+
+  async function toggleArm(ch, armed) {
+    // Optimistic UI update — immediately reflect the change
+    const c = _cameras.find(x => x.channel === ch);
+    if (c) {
+      c.armed = armed;
+      // On disarm: active also becomes false immediately (FFmpeg will be killed on the server)
+      // On arm: active=false until the new FFmpeg pushes the first segment (~1-2 sec)
+      c.active = false;
+    }
+    renderCamsPanel();
+
+    try {
+      const r = await fetch(`/api/recordings/${ch}/arm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ armed }),
+      });
+      if (!r.ok) throw new Error("Server " + r.status);
+
+      // Polling: refresh at 1.5/3/6 sec to catch promote (active→true after start)
+      // or demote (active→false after kill).
+      [1500, 3000, 6000].forEach(ms =>
+        setTimeout(() => loadCamerasList().then(renderCamsPanel), ms)
+      );
+    } catch (e) {
+      alert("Error: " + e.message);
+      // Rollback on error
+      if (c) c.armed = !armed;
+      loadCamerasList().then(renderCamsPanel);
+    }
+  }
+
+  /* ── UI bindings ── */
+  function bindUI() {
+    document.getElementById("sel-cam").addEventListener("change", e => {
+      _curCh = parseInt(e.target.value);
+      loadTimeline().then(autoSeekToNow);
+    });
+    document.getElementById("sel-date").addEventListener("change", e => {
+      _curDate = e.target.value;
+      loadTimeline().then(autoSeekToNow);
+    });
+
+    // Click on timeline → seek
+    const tl = document.getElementById("timeline");
+    tl.addEventListener("click", e => {
+      if (e.target.classList.contains("tl-event")) return;
+      const rect = tl.getBoundingClientRect();
+      const ratio = (e.clientX - rect.left) / rect.width;
+      const sec = Math.floor(ratio * SEC_PER_DAY);
+      seekToSec(sec);
+    });
+
+    // Speed buttons
+    document.getElementById("btn-speed-1").onclick = () => setSpeed(1);
+    document.getElementById("btn-speed-2").onclick = () => setSpeed(2);
+    document.getElementById("btn-speed-4").onclick = () => setSpeed(4);
+
+    // Jump to now
+    document.getElementById("btn-jump-now").onclick = () => {
+      const today = todayStr();
+      if (_curDate !== today) {
+        document.getElementById("sel-date").value = today;
+        _curDate = today;
+        loadTimeline().then(() => {
+          const sec = isoToSecOfDay(new Date().toISOString());
+          seekToSec(Math.max(0, sec - 30));
+        });
+      } else {
+        const sec = isoToSecOfDay(new Date().toISOString());
+        seekToSec(Math.max(0, sec - 30));
+      }
+    };
+
+    // Prev/Next event
+    document.getElementById("btn-prev-event").onclick = () => jumpEvent(-1);
+    document.getElementById("btn-next-event").onclick = () => jumpEvent(+1);
+
+    // Cams panel
+    document.getElementById("btn-cams-panel").onclick = () => {
+      renderCamsPanel();
+      // Also populate the select with cameras for bulk delete
+      const sel = document.getElementById("rec-bulk-channel");
+      if (sel) {
+        sel.innerHTML = '<option value="">All</option>' +
+          (_cameras || []).map(c =>
+            `<option value="${c.channel}">${c.name} (ch ${c.channel})</option>`
+          ).join("");
+      }
+      document.getElementById("cams-modal").style.display = "flex";
+    };
+
+    bindPlayerEvents();
+  }
+
+  // ── Bulk delete recordings ────────────────────────
+  async function confirmRecordingsBulkDelete() {
+    const days = parseInt(document.getElementById("rec-bulk-days").value);
+    const ch   = document.getElementById("rec-bulk-channel").value;
+    const params = new URLSearchParams({ older_than_days: String(days) });
+    if (ch) params.set("channel", ch);
+    const camLabel = ch
+      ? `camera ${ch}`
+      : "ALL cameras";
+    if (!confirm(`Delete recordings older than ${days} days from ${camLabel}?\nThis action is irreversible.`)) return;
+
+    const result = document.getElementById("rec-bulk-result");
+    result.style.display = "block";
+    result.style.color   = "#fbbf24";
+    result.textContent   = "Deleting…";
+    try {
+      const r = await fetch(`/api/recordings/bulk?${params}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(await r.text());
+      const d = await r.json();
+      result.style.color = "#34d399";
+      result.textContent = `✓ Deleted ${d.deleted_files} files, freed ${d.freed_mb} MB`;
+    } catch (e) {
+      result.style.color = "#f87171";
+      result.textContent = `✗ ${e.message}`;
+    }
+  }
+
+  function setSpeed(rate) {
+    document.getElementById("player").playbackRate = rate;
+    document.querySelectorAll('[id^="btn-speed-"]').forEach(b => b.classList.remove("primary"));
+    document.getElementById(`btn-speed-${rate}`).classList.add("primary");
+  }
+
+  function jumpEvent(dir) {
+    if (!_events.length) return;
+    const player = document.getElementById("player");
+    const curSec = (_curSegStart || 0) + (player.currentTime || 0);
+    let target;
+    if (dir > 0) {
+      target = _events.find(ev => isoToSecOfDay(ev.ts) > curSec + 1);
+    } else {
+      const before = _events.filter(ev => isoToSecOfDay(ev.ts) < curSec - 1);
+      target = before[before.length - 1];
+    }
+    if (target) seekToSec(isoToSecOfDay(target.ts));
+  }
+
+  init().catch(console.error);
+</script>
+</body>
+</html>

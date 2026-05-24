@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/lib/auth-guard.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Account — HomeHub</title>
+  <style>
+    :root {
+      --bg:    #0d1117;
+      --card:  #161b22;
+      --line:  #30363d;
+      --text:  #e6edf3;
+      --muted: #8b949e;
+      --accent:#58a6ff;
+      --ok:    #3fb950;
+      --warn:  #f0883e;
+      --err:   #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 16px;
+    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 500; }
+    header a { color: var(--accent); text-decoration: none; font-size: 14px; }
+    header a:hover { text-decoration: underline; }
+    main {
+      max-width: 480px;
+      margin: 32px auto;
+      padding: 0 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+    .card h2 { margin: 0 0 4px 0; font-size: 16px; font-weight: 600; }
+    .card .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+    .row {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-bottom: 12px;
+    }
+    .row label { font-size: 13px; color: var(--muted); }
+    .row input {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .row input:focus { outline: none; border-color: var(--accent); }
+    .actions { display: flex; gap: 8px; margin-top: 16px; }
+    button {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    button.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    .msg {
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+    .msg.ok  { background: #0f2f1a; color: var(--ok);  border: 1px solid var(--ok);   display: block; }
+    .msg.err { background: #2e1414; color: var(--err); border: 1px solid var(--err);  display: block; }
+    .info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+    .info-row .k { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>👤 Account</h1>
+    <a href="/">← Back</a>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>Profile</h2>
+      <div class="info-row"><span class="k">Username</span><span id="info-user">—</span></div>
+      <div class="info-row"><span class="k">Auth enabled</span><span id="info-auth">—</span></div>
+    </div>
+
+    <div class="card" id="pw-card">
+      <h2>Change password</h2>
+      <div class="sub">You will stay signed in after a successful change.</div>
+
+      <form id="pw-form" autocomplete="off">
+        <div class="row">
+          <label for="cur">Current password</label>
+          <input id="cur" type="password" required autocomplete="current-password" />
+        </div>
+        <div class="row">
+          <label for="new">New password (min 6 chars)</label>
+          <input id="new" type="password" required minlength="6" autocomplete="new-password" />
+        </div>
+        <div class="row">
+          <label for="new2">Confirm new password</label>
+          <input id="new2" type="password" required minlength="6" autocomplete="new-password" />
+        </div>
+        <div class="actions">
+          <button type="submit" id="btn-save">Update password</button>
+          <button type="button" class="secondary" onclick="document.getElementById('pw-form').reset()">Reset</button>
+        </div>
+        <div class="msg" id="msg"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Session</h2>
+      <div class="sub">Sign out of this browser.</div>
+      <button class="secondary" onclick="logout()">Logout</button>
+    </div>
+  </main>
+
+  <script>
+    async function loadInfo() {
+      try {
+        const r = await fetch("/api/auth/whoami", { cache: "no-store" });
+        const d = await r.json();
+        document.getElementById("info-user").textContent = d.user || "(not signed in)";
+        document.getElementById("info-auth").textContent = d.auth_enabled ? "yes" : "no";
+        if (!d.auth_enabled) {
+          document.getElementById("pw-card").style.display = "none";
+        }
+      } catch (e) {
+        document.getElementById("info-user").textContent = "(error)";
+      }
+    }
+
+    async function logout() {
+      try {
+        await fetch("/api/auth/logout", { method: "POST" });
+      } catch {}
+      location.href = "/login.html";
+    }
+
+    document.getElementById("pw-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const cur  = document.getElementById("cur").value;
+      const nw   = document.getElementById("new").value;
+      const nw2  = document.getElementById("new2").value;
+      const msg  = document.getElementById("msg");
+      const btn  = document.getElementById("btn-save");
+      msg.className = "msg"; msg.textContent = "";
+
+      if (nw !== nw2) {
+        msg.className = "msg err";
+        msg.textContent = "New passwords do not match.";
+        return;
+      }
+      if (nw.length < 6) {
+        msg.className = "msg err";
+        msg.textContent = "New password must be at least 6 characters.";
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = "Updating…";
+      try {
+        const r = await fetch("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_password: cur, new_password: nw }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          msg.className = "msg err";
+          msg.textContent = d.detail || `Error ${r.status}`;
+        } else {
+          msg.className = "msg ok";
+          msg.textContent = "Password updated successfully.";
+          document.getElementById("pw-form").reset();
+        }
+      } catch (err) {
+        msg.className = "msg err";
+        msg.textContent = "Network error: " + err.message;
+      } finally {
+        btn.disabled = false; btn.textContent = "Update password";
+      }
+    });
+
+    loadInfo();
+  </script>
+</body>
+</html>

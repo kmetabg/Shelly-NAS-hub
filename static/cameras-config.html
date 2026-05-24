@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/lib/auth-guard.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera Configuration · HomeHub</title>
+  <style>
+    :root {
+      --bg:      #07111e;
+      --surface: #0d1f35;
+      --card:    #112240;
+      --border:  #1e3a5f;
+      --text:    #e2eaf4;
+      --muted:   #6b8cae;
+      --accent:  #38bdf8;
+      --ok:      #34d399;
+      --warn:    #fbbf24;
+      --err:     #f87171;
+      --r:       12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    header {
+      padding: 1rem 1.4rem;
+      display: flex; align-items: center; justify-content: space-between;
+      background: linear-gradient(180deg, rgba(56,189,248,.06) 0%, rgba(0,0,0,0) 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 1.15rem; font-weight: 700; }
+    header .sub { font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+    header .actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .btn {
+      padding: .45rem .9rem; border-radius: 6px; font-size: .82rem; font-weight: 600;
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      cursor: pointer; text-decoration: none;
+      transition: background .15s, border-color .15s, transform .05s;
+    }
+    .btn:hover  { background: rgba(56,189,248,.18); border-color: var(--accent); }
+    .btn:active { transform: scale(.98); }
+    .btn.primary {
+      background: rgba(56,189,248,.25); border-color: var(--accent); color: #fff;
+    }
+    .btn.primary:hover { background: rgba(56,189,248,.4); }
+    .btn.danger { color: var(--err); border-color: rgba(248,113,113,.4); }
+    .btn.danger:hover { background: rgba(248,113,113,.18); border-color: var(--err); color: #fff; }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 1.4rem; }
+
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;
+    }
+    .toolbar .info { color: var(--muted); font-size: .85rem; }
+
+    /* Storage summary card */
+    .storage-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 1rem 1.2rem; margin-bottom: 1rem;
+    }
+    .storage-row {
+      display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: stretch;
+    }
+    .storage-stat { min-width: 120px; }
+    .storage-stat .k { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+    .storage-stat .v { font-size: 1.05rem; font-weight: 600; margin-top: .2rem; }
+    .storage-stat .v.warn { color: var(--warn); }
+    .storage-stat .v.err  { color: var(--err); }
+    .storage-stat .v.ok   { color: var(--ok); }
+    .disk-bar {
+      position: relative; height: 8px; margin-top: .9rem;
+      background: rgba(0,0,0,.3); border-radius: 4px; overflow: hidden;
+    }
+    .disk-fill  { height: 100%; background: var(--accent); transition: width .3s; }
+    .disk-fill.warn { background: var(--warn); }
+    .disk-fill.err  { background: var(--err); }
+    .disk-limit {
+      position: absolute; top: -2px; bottom: -2px; width: 2px;
+      background: rgba(248,113,113,.6);
+    }
+    .storage-hint { font-size: .78rem; color: var(--muted); margin-top: .5rem; }
+
+    /* Retention badge in table */
+    .ret-badge {
+      display: inline-block; padding: .15rem .5rem; border-radius: 4px;
+      font-size: .78rem; font-weight: 500;
+    }
+    .ret-badge.default  { color: var(--muted); background: rgba(107,140,174,.12); }
+    .ret-badge.override { color: var(--accent); background: rgba(56,189,248,.14);
+                          border: 1px solid rgba(56,189,248,.3); }
+    .storage-cell { font-size: .82rem; line-height: 1.4; }
+    .storage-cell .est { color: var(--muted); font-size: .75rem; }
+
+    table.cams {
+      width: 100%; border-collapse: collapse;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      overflow: hidden;
+    }
+    table.cams th, table.cams td {
+      padding: .7rem .9rem; text-align: left; font-size: .88rem;
+      border-bottom: 1px solid var(--border);
+    }
+    table.cams th {
+      background: rgba(56,189,248,.06); font-weight: 600;
+      color: var(--muted); font-size: .75rem; text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    table.cams tr:last-child td { border-bottom: none; }
+    table.cams tr:hover td { background: rgba(56,189,248,.04); }
+
+    .pill {
+      display: inline-block; padding: .15rem .55rem; border-radius: 12px;
+      font-size: .7rem; font-weight: 600; letter-spacing: .03em;
+      border: 1px solid transparent;
+    }
+    .pill.nvr_dahua    { background: #1e2c4a; border-color: #3b5fa3; color: #93c5fd; }
+    .pill.rtsp_generic { background: #2a1e4a; border-color: #6d4ba5; color: #c4b5fd; }
+    .pill.shelly       { background: #1a3530; border-color: #34d399; color: #6ee7b7; }
+    .pill.disabled     { opacity: .5; }
+
+    .pill.status-online  { background: #052e16; border-color: #166534; color: var(--ok); }
+    .pill.status-offline { background: #2c1410; border-color: #7f1d1d; color: var(--err); }
+    .pill.status-unknown { background: #1c1917; border-color: #44403c; color: var(--muted); }
+
+    .row-actions { display: flex; gap: .35rem; flex-wrap: nowrap; }
+
+    /* ── modal ─────────────────────────────────────────── */
+    .modal {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,.75);
+      align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .modal.open { display: flex; }
+    .modal-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); width: min(560px, 95vw);
+      max-height: 92vh; overflow-y: auto;
+      padding: 1.4rem;
+    }
+    .modal-card h2 {
+      font-size: 1.05rem; margin-bottom: 1rem;
+      display: flex; align-items: center; gap: .5rem;
+    }
+
+    .form-row { margin-bottom: .9rem; }
+    .form-row label {
+      display: block; font-size: .78rem; font-weight: 600;
+      color: var(--muted); margin-bottom: .3rem;
+    }
+    .form-row label .req { color: var(--accent); }
+    .form-row input, .form-row select, .form-row textarea {
+      width: 100%; padding: .55rem .75rem;
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-family: inherit; font-size: .9rem;
+    }
+    .form-row input:focus, .form-row select:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .form-row .help { font-size: .7rem; color: var(--muted); margin-top: .3rem; }
+    .form-row .checkbox { display: flex; align-items: center; gap: .5rem; }
+    .form-row .checkbox input { width: auto; }
+
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+    @media (max-width: 480px) { .form-grid-2 { grid-template-columns: 1fr; } }
+
+    .modal-actions {
+      display: flex; justify-content: space-between; gap: .5rem;
+      margin-top: 1.2rem; flex-wrap: wrap;
+    }
+    .modal-actions .left  { display: flex; gap: .4rem; }
+    .modal-actions .right { display: flex; gap: .4rem; }
+
+    .test-result {
+      margin-top: .5rem; padding: .6rem .8rem;
+      border-radius: 6px; font-size: .82rem;
+      border: 1px solid var(--border); background: var(--card);
+      display: none;
+    }
+    .test-result.ok    { display: block; border-color: var(--ok);  color: var(--ok); }
+    .test-result.err   { display: block; border-color: var(--err); color: var(--err); }
+    .test-result.busy  { display: block; }
+
+    .delete-warn {
+      background: rgba(248,113,113,.08);
+      border: 1px solid rgba(248,113,113,.3);
+      border-radius: 6px; padding: .8rem;
+      margin-bottom: 1rem; font-size: .85rem; color: var(--err);
+    }
+
+    .empty-state {
+      text-align: center; padding: 3rem 1rem; color: var(--muted);
+      background: var(--surface); border: 1px dashed var(--border);
+      border-radius: var(--r);
+    }
+    .empty-state .icon { font-size: 2rem; margin-bottom: .5rem; }
+
+    .toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 200;
+      padding: .7rem 1rem; border-radius: 8px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: .85rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+      transform: translateY(20px); opacity: 0;
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+      max-width: 360px;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.ok  { border-color: var(--ok);  color: var(--ok); }
+    .toast.err { border-color: var(--err); color: var(--err); }
+
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: .4rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🛠 Camera Configuration</h1>
+    <div class="sub" id="hdr-sub">Loading…</div>
+  </div>
+  <div class="actions">
+    <button class="btn primary" onclick="openAddModal()">+ Add Camera</button>
+    <a class="btn" href="/cameras.html">← Cameras</a>
+    <a class="btn" href="/">Home</a>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <div class="info" id="cam-count">—</div>
+    <div class="info" style="font-size:.78rem;">
+      Tip: deleting a camera optionally removes its recordings, events &amp; faces.
+    </div>
+  </div>
+
+  <!-- ── Storage / disk summary ───────────────────────────── -->
+  <div id="storage-card" class="storage-card" style="display:none;">
+    <div class="storage-row">
+      <div class="storage-stat">
+        <div class="k">Disk total</div>
+        <div class="v" id="st-total">—</div>
+      </div>
+      <div class="storage-stat">
+        <div class="k">Used</div>
+        <div class="v" id="st-used">—</div>
+      </div>
+      <div class="storage-stat">
+        <div class="k">Free</div>
+        <div class="v" id="st-free">—</div>
+      </div>
+      <div class="storage-stat">
+        <div class="k">Estimated for retention</div>
+        <div class="v" id="st-estimated">—</div>
+      </div>
+      <div class="storage-stat">
+        <div class="k">Global retention</div>
+        <div class="v" id="st-global-keep">—</div>
+      </div>
+    </div>
+    <div class="disk-bar" title="Disk usage">
+      <div class="disk-fill" id="st-bar"></div>
+      <div class="disk-limit" id="st-limit"></div>
+    </div>
+    <div class="storage-hint" id="st-hint"></div>
+  </div>
+
+  <div id="cam-table-wrap">
+    <table class="cams" id="cam-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Channel</th>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Endpoint</th>
+          <th>Retention</th>
+          <th>Storage (current / est)</th>
+          <th>Status</th>
+          <th style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cam-tbody"></tbody>
+    </table>
+
+    <div class="empty-state" id="cam-empty" style="display:none;">
+      <div class="icon">📷</div>
+      <div><strong>No cameras configured</strong></div>
+      <div style="font-size:.85rem; margin-top:.4rem;">
+        Click <em>+ Add Camera</em> to add your first RTSP, NVR or Shelly camera.
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ── Add / Edit modal ─────────────────────────────── -->
+<div class="modal" id="form-modal" onclick="if(event.target===this) closeForm()">
+  <div class="modal-card">
+    <h2 id="form-title">Add Camera</h2>
+
+    <div class="form-row">
+      <label>Camera Type <span class="req">*</span></label>
+      <select id="f-type" onchange="updateTypeFields()">
+        <option value="shelly">Shelly Camera (HTTP snapshot, WebRTC)</option>
+        <option value="rtsp_generic">Generic RTSP Camera (Reolink, IMOU, Hikvision, etc.)</option>
+        <option value="nvr_dahua">Dahua NVR Channel (CGI snapshot + RTSP)</option>
+      </select>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-row">
+        <label>Channel ID <span class="req">*</span></label>
+        <input type="number" id="f-channel" min="1" max="999" placeholder="e.g. 5" />
+        <div class="help">Unique number used in URLs and recording paths. Pick any free integer.</div>
+      </div>
+      <div class="form-row">
+        <label>Display Name <span class="req">*</span></label>
+        <input type="text" id="f-name" placeholder="e.g. Front Door" />
+      </div>
+    </div>
+
+    <!-- Type-specific fields -->
+    <div id="fields-shelly">
+      <div class="form-row">
+        <label>Shelly IP Address <span class="req">*</span></label>
+        <input type="text" id="f-shelly-ip" placeholder="192.168.1.100" />
+        <div class="help">Camera reachable on port 80, snapshot at <code>/camera/0/snapshot</code>.</div>
+      </div>
+    </div>
+
+    <div id="fields-rtsp" style="display:none;">
+      <div class="form-row">
+        <label>RTSP Main Stream URL <span class="req">*</span></label>
+        <input type="text" id="f-rtsp-main"
+               placeholder="rtsp://user:pass@192.168.1.100:554/stream/main" />
+        <div class="help">Full URL with credentials embedded. Used for recording and HQ snapshots.</div>
+      </div>
+      <div class="form-row">
+        <label>RTSP Sub Stream URL (optional)</label>
+        <input type="text" id="f-rtsp-sub"
+               placeholder="rtsp://user:pass@192.168.1.100:554/stream/sub" />
+        <div class="help">Lower-resolution stream for live preview &amp; AI detection.</div>
+      </div>
+      <div class="form-row">
+        <label>HTTP Snapshot URL (optional)</label>
+        <input type="text" id="f-snap-url"
+               placeholder="http://192.168.1.100/cgi-bin/snapshot?user=...&amp;password=..." />
+        <div class="help">Faster than RTSP grab for periodic snapshots (e.g. Reolink CGI API).</div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Camera IP (optional)</label>
+          <input type="text" id="f-rtsp-ip" placeholder="192.168.1.100" />
+        </div>
+        <div class="form-row">
+          <label class="checkbox">
+            <input type="checkbox" id="f-has-audio" />
+            <span>Has audio (AAC in main stream)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div id="fields-nvr" style="display:none;">
+      <div class="form-row">
+        <label>NVR Host / IP <span class="req">*</span></label>
+        <input type="text" id="f-nvr-host" placeholder="192.168.1.10" />
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>User <span class="req">*</span></label>
+          <input type="text" id="f-nvr-user" placeholder="admin" />
+        </div>
+        <div class="form-row">
+          <label>Password <span class="req">*</span></label>
+          <input type="password" id="f-nvr-pass" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label>NVR Channel Number <span class="req">*</span></label>
+        <input type="number" id="f-nvr-ch-id" min="1" max="64" />
+        <div class="help">Physical channel on the NVR (1-64). May differ from the Channel ID above.</div>
+      </div>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-row">
+        <label>Retention (days)</label>
+        <input type="number" id="f-retention" min="1" max="365" placeholder="default" />
+        <div class="help" id="f-retention-help">
+          Override per-camera. Leave blank to use the global default.
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Estimated storage</label>
+        <div class="help" id="f-storage-est"
+             style="padding:.55rem .8rem; background:rgba(56,189,248,.06);
+                    border:1px dashed var(--border); border-radius:6px;">
+          Save the camera and enter Edit again to see estimates.
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label class="checkbox">
+        <input type="checkbox" id="f-enabled" checked />
+        <span>Enable this camera (recording, AI detection, live view)</span>
+      </label>
+    </div>
+
+    <div class="test-result" id="test-result"></div>
+
+    <div class="modal-actions">
+      <div class="left">
+        <button class="btn" onclick="testConfig()">🔌 Test connection</button>
+      </div>
+      <div class="right">
+        <button class="btn" onclick="closeForm()">Cancel</button>
+        <button class="btn primary" onclick="saveCamera()" id="btn-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Delete confirmation modal ─────────────────────── -->
+<div class="modal" id="delete-modal" onclick="if(event.target===this) closeDelete()">
+  <div class="modal-card">
+    <h2>🗑 Delete Camera</h2>
+
+    <div class="delete-warn">
+      You are about to delete camera <strong id="del-name">—</strong>
+      (channel <strong id="del-ch">—</strong>). This cannot be undone.
+    </div>
+
+    <div class="form-row">
+      <label class="checkbox">
+        <input type="checkbox" id="del-recordings" />
+        <span>
+          Also delete all <strong>recordings, detection events, and face crops</strong>
+          from this camera. <em>Otherwise they are kept on disk.</em>
+        </span>
+      </label>
+    </div>
+
+    <div class="modal-actions">
+      <div class="left"></div>
+      <div class="right">
+        <button class="btn" onclick="closeDelete()">Cancel</button>
+        <button class="btn danger" onclick="confirmDelete()" id="btn-del">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── State ─────────────────────────────────────────────
+  let CAMERAS = [];
+  let STORAGE = null;   // /api/cameras/storage response
+  let editId  = null;   // null => add new
+  let delId   = null;
+
+  // ── Helpers ───────────────────────────────────────────
+  function fmtBytes(n) {
+    if (!n || n < 0) return "0 B";
+    const u = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
+  }
+
+  // ── Toast ─────────────────────────────────────────────
+  function toast(msg, kind = "ok", durMs = 3500) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className   = `toast show ${kind}`;
+    setTimeout(() => { el.className = "toast"; }, durMs);
+  }
+
+  // ── Load cameras ───────────────────────────────────────
+  async function loadCameras() {
+    try {
+      const r = await fetch("/api/cameras");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      CAMERAS = data.cameras || [];
+      // Storage info е independent — fail soft (може да е disk scan in progress)
+      loadStorage().finally(renderTable);
+    } catch (e) {
+      toast(`Failed to load: ${e.message}`, "err");
+    }
+  }
+
+  async function loadStorage() {
+    try {
+      const r = await fetch("/api/cameras/storage");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      STORAGE = await r.json();
+      renderStorageCard();
+    } catch (e) {
+      console.warn("storage:", e);
+    }
+  }
+
+  function storageFor(channel) {
+    if (!STORAGE) return null;
+    return (STORAGE.cameras || []).find(c => c.channel === channel) || null;
+  }
+
+  function renderStorageCard() {
+    if (!STORAGE) return;
+    const card = document.getElementById("storage-card");
+    card.style.display = "";
+
+    const d = STORAGE.disk;
+    if (d) {
+      document.getElementById("st-total").textContent = fmtBytes(d.total_bytes);
+      const usedEl = document.getElementById("st-used");
+      usedEl.textContent = `${fmtBytes(d.used_bytes)} (${d.used_pct}%)`;
+      usedEl.className = "v" + (d.used_pct >= d.limit_pct ? " err" : d.used_pct >= 80 ? " warn" : "");
+      const freeEl = document.getElementById("st-free");
+      freeEl.textContent = fmtBytes(d.free_bytes);
+      freeEl.className = "v" + (d.free_bytes < 50e9 ? " warn" : " ok");
+
+      const bar = document.getElementById("st-bar");
+      bar.style.width = `${Math.min(100, d.used_pct)}%`;
+      bar.className = "disk-fill" + (d.used_pct >= d.limit_pct ? " err" : d.used_pct >= 80 ? " warn" : "");
+      document.getElementById("st-limit").style.left = `${Math.min(100, d.limit_pct)}%`;
+    }
+
+    const est   = STORAGE.total_estimated_bytes || 0;
+    const free  = d ? d.free_bytes : 0;
+    const estEl = document.getElementById("st-estimated");
+    estEl.textContent = fmtBytes(est);
+    // Estimated > free → warn (записът ще удари disk_limit_pct ÷ ще се свие retention)
+    if (d && est > free) {
+      estEl.className = "v err";
+    } else if (d && est > free * 0.7) {
+      estEl.className = "v warn";
+    } else {
+      estEl.className = "v ok";
+    }
+
+    document.getElementById("st-global-keep").textContent = `${STORAGE.global_retention_days} days`;
+
+    let hint = "";
+    if (d && est > free) {
+      hint = `⚠ Estimated need (${fmtBytes(est)}) exceeds free space (${fmtBytes(free)}). ` +
+             `Retention will auto-shrink when disk usage exceeds ${d.limit_pct}%.`;
+    } else if (d && est > 0) {
+      hint = `Once retention is fully populated, recordings should occupy ~${fmtBytes(est)} ` +
+             `(out of ${fmtBytes(free)} free).`;
+    }
+    document.getElementById("st-hint").textContent = hint;
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById("cam-tbody");
+    const table = document.getElementById("cam-table");
+    const empty = document.getElementById("cam-empty");
+
+    if (CAMERAS.length === 0) {
+      table.style.display = "none";
+      empty.style.display = "block";
+    } else {
+      table.style.display = "";
+      empty.style.display = "none";
+
+      const globalKeep = STORAGE?.global_retention_days ?? null;
+      tbody.innerHTML = CAMERAS.map(cam => {
+        const enabledClass = cam.enabled ? "" : " disabled";
+        const endpoint = cameraEndpoint(cam);
+        // Retention badge
+        const retBadge = cam.retention_days
+          ? `<span class="ret-badge override" title="Per-camera override">${cam.retention_days} days</span>`
+          : `<span class="ret-badge default" title="Using global default">${globalKeep ?? "—"} days</span>`;
+        // Storage cell
+        const st = storageFor(cam.channel);
+        const stCell = st
+          ? `<div class="storage-cell">
+               <div>${fmtBytes(st.size_bytes)}<span class="est"> / est ${fmtBytes(st.estimated_size_bytes)}</span></div>
+               <div class="est">avg ${fmtBytes(st.avg_bytes_per_day)}/day · ${st.days_present} day${st.days_present===1?"":"s"} present</div>
+             </div>`
+          : `<span style="color:var(--muted);font-size:.78rem;">—</span>`;
+        return `
+          <tr data-id="${cam.id}">
+            <td><strong>${cam.channel}</strong></td>
+            <td>${escapeHtml(cam.name)}${cam.enabled ? "" : ' <span style="color:var(--muted);font-size:.75rem;">(disabled)</span>'}</td>
+            <td><span class="pill ${cam.type}${enabledClass}">${typeLabel(cam.type)}</span></td>
+            <td style="font-family:ui-monospace,monospace;font-size:.8rem;color:var(--muted);">${escapeHtml(endpoint)}</td>
+            <td>${retBadge}</td>
+            <td>${stCell}</td>
+            <td><span class="pill status-unknown" id="status-${cam.id}">—</span></td>
+            <td style="text-align:right;">
+              <div class="row-actions" style="justify-content:flex-end;">
+                <button class="btn" onclick="testRow(${cam.id})">Test</button>
+                <button class="btn" onclick="openEditModal(${cam.id})">Edit</button>
+                <button class="btn danger" onclick="openDeleteModal(${cam.id})">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    document.getElementById("cam-count").textContent =
+      `${CAMERAS.length} camera${CAMERAS.length === 1 ? "" : "s"} configured`;
+    document.getElementById("hdr-sub").textContent =
+      `${CAMERAS.length} camera${CAMERAS.length === 1 ? "" : "s"} · ${CAMERAS.filter(c=>c.enabled).length} enabled`;
+  }
+
+  function typeLabel(type) {
+    return ({
+      nvr_dahua:    "NVR Dahua",
+      rtsp_generic: "RTSP",
+      shelly:       "Shelly",
+    })[type] || type;
+  }
+
+  function cameraEndpoint(cam) {
+    const cfg = cam.config || {};
+    if (cam.type === "shelly")       return `http://${cfg.ip || "?"}/`;
+    if (cam.type === "rtsp_generic") {
+      const u = cfg.rtsp_main || cfg.snap_url || cfg.ip || "?";
+      return u.replace(/:[^:@/]*@/, ":***@");
+    }
+    if (cam.type === "nvr_dahua") {
+      return `${cfg.host || "?"}/ch${cfg.channel_id ?? cam.channel}`;
+    }
+    return "—";
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  // ── Add / Edit modal ──────────────────────────────────
+  function openAddModal() {
+    editId = null;
+    document.getElementById("form-title").textContent = "Add Camera";
+    document.getElementById("f-type").value     = "shelly";
+    document.getElementById("f-channel").value  = nextFreeChannel();
+    document.getElementById("f-name").value     = "";
+    document.getElementById("f-shelly-ip").value = "";
+    document.getElementById("f-rtsp-main").value = "";
+    document.getElementById("f-rtsp-sub").value  = "";
+    document.getElementById("f-snap-url").value  = "";
+    document.getElementById("f-rtsp-ip").value   = "";
+    document.getElementById("f-has-audio").checked = false;
+    document.getElementById("f-nvr-host").value  = "";
+    document.getElementById("f-nvr-user").value  = "admin";
+    document.getElementById("f-nvr-pass").value  = "";
+    document.getElementById("f-nvr-ch-id").value = "";
+    document.getElementById("f-enabled").checked = true;
+    document.getElementById("f-retention").value = "";
+    document.getElementById("f-retention").placeholder =
+      `default: ${STORAGE?.global_retention_days ?? "—"}`;
+    document.getElementById("f-storage-est").innerHTML =
+      `<span style="color:var(--muted);">Available after first day of recordings.</span>`;
+    clearTestResult();
+    updateTypeFields();
+    document.getElementById("form-modal").classList.add("open");
+  }
+
+  function openEditModal(camId) {
+    const cam = CAMERAS.find(c => c.id === camId);
+    if (!cam) return;
+    editId = camId;
+    document.getElementById("form-title").textContent = `Edit: ${cam.name}`;
+    const cfg = cam.config || {};
+
+    document.getElementById("f-type").value     = cam.type;
+    document.getElementById("f-channel").value  = cam.channel;
+    document.getElementById("f-name").value     = cam.name;
+    document.getElementById("f-enabled").checked = !!cam.enabled;
+    document.getElementById("f-has-audio").checked = !!cam.has_audio;
+
+    document.getElementById("f-shelly-ip").value = cfg.ip || "";
+    document.getElementById("f-rtsp-main").value = cfg.rtsp_main || "";
+    document.getElementById("f-rtsp-sub").value  = cfg.rtsp_sub  || "";
+    document.getElementById("f-snap-url").value  = cfg.snap_url  || "";
+    document.getElementById("f-rtsp-ip").value   = cfg.ip || "";
+    document.getElementById("f-nvr-host").value  = cfg.host || "";
+    document.getElementById("f-nvr-user").value  = cfg.user || "";
+    document.getElementById("f-nvr-pass").value  = cfg.password || "";
+    document.getElementById("f-nvr-ch-id").value = cfg.channel_id ?? cam.channel;
+    document.getElementById("f-retention").value = cam.retention_days ?? "";
+    document.getElementById("f-retention").placeholder =
+      `default: ${STORAGE?.global_retention_days ?? "—"}`;
+    // Live storage estimate
+    renderFormStorage(cam);
+    clearTestResult();
+    updateTypeFields();
+    document.getElementById("form-modal").classList.add("open");
+  }
+
+  function renderFormStorage(cam) {
+    const el = document.getElementById("f-storage-est");
+    const st = storageFor(cam.channel);
+    if (!st) {
+      el.innerHTML = `<span style="color:var(--muted);">No data yet (no recordings).</span>`;
+      return;
+    }
+    const renderForKeep = (keep) => {
+      const total = st.avg_bytes_per_day * keep;
+      return `<strong>${fmtBytes(total)}</strong> for ${keep} days
+              <span style="color:var(--muted);"> (avg ${fmtBytes(st.avg_bytes_per_day)}/day,
+              currently ${fmtBytes(st.size_bytes)} over ${st.days_present} days)</span>`;
+    };
+    const update = () => {
+      const v = parseInt(document.getElementById("f-retention").value);
+      const keep = Number.isFinite(v) && v > 0 ? v : st.global_retention_days;
+      el.innerHTML = renderForKeep(keep);
+    };
+    update();
+    document.getElementById("f-retention").oninput = update;
+  }
+
+  function closeForm() {
+    document.getElementById("form-modal").classList.remove("open");
+  }
+
+  function updateTypeFields() {
+    const t = document.getElementById("f-type").value;
+    document.getElementById("fields-shelly").style.display = t === "shelly" ? "" : "none";
+    document.getElementById("fields-rtsp").style.display   = t === "rtsp_generic" ? "" : "none";
+    document.getElementById("fields-nvr").style.display    = t === "nvr_dahua" ? "" : "none";
+  }
+
+  function nextFreeChannel() {
+    const taken = new Set(CAMERAS.map(c => c.channel));
+    for (let n = 1; n < 1000; n++) {
+      if (!taken.has(n)) return n;
+    }
+    return 1;
+  }
+
+  function buildBodyFromForm() {
+    const type = document.getElementById("f-type").value;
+    const channel = parseInt(document.getElementById("f-channel").value);
+    const name    = document.getElementById("f-name").value.trim();
+    const enabled = document.getElementById("f-enabled").checked;
+    const hasAudio = document.getElementById("f-has-audio").checked;
+
+    if (!Number.isFinite(channel) || channel <= 0) {
+      throw new Error("Channel must be a positive integer");
+    }
+    if (!name) throw new Error("Name is required");
+
+    let config = {};
+    if (type === "shelly") {
+      const ip = document.getElementById("f-shelly-ip").value.trim();
+      if (!ip) throw new Error("Shelly IP is required");
+      config = { ip };
+    } else if (type === "rtsp_generic") {
+      const main = document.getElementById("f-rtsp-main").value.trim();
+      if (!main) throw new Error("RTSP Main URL is required");
+      config = {
+        rtsp_main: main,
+        rtsp_sub:  document.getElementById("f-rtsp-sub").value.trim(),
+        snap_url:  document.getElementById("f-snap-url").value.trim(),
+        ip:        document.getElementById("f-rtsp-ip").value.trim(),
+      };
+    } else if (type === "nvr_dahua") {
+      const host = document.getElementById("f-nvr-host").value.trim();
+      const user = document.getElementById("f-nvr-user").value.trim();
+      const pass = document.getElementById("f-nvr-pass").value;
+      const chId = parseInt(document.getElementById("f-nvr-ch-id").value);
+      if (!host || !user || !pass) throw new Error("NVR host, user and password are required");
+      if (!Number.isFinite(chId)) throw new Error("NVR channel number is required");
+      config = { host, user, password: pass, channel_id: chId };
+    }
+
+    // Retention override (null = use global default)
+    const retVal = document.getElementById("f-retention").value.trim();
+    let retention_days = null;
+    if (retVal) {
+      const n = parseInt(retVal);
+      if (!Number.isFinite(n) || n < 1 || n > 365) {
+        throw new Error("Retention must be between 1 and 365 days");
+      }
+      retention_days = n;
+    }
+
+    return { channel, type, name, enabled, has_audio: hasAudio, config, retention_days };
+  }
+
+  async function saveCamera() {
+    const btn = document.getElementById("btn-save");
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saving…';
+    try {
+      const body = buildBodyFromForm();
+      const url  = editId == null ? "/api/cameras" : `/api/cameras/${editId}`;
+      const method = editId == null ? "POST" : "PUT";
+
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(`HTTP ${r.status}: ${t}`);
+      }
+      toast(editId == null ? "Camera added" : "Camera updated", "ok");
+      closeForm();
+      await loadCameras();
+    } catch (e) {
+      toast(`Save failed: ${e.message}`, "err", 6000);
+    } finally {
+      btn.disabled = false; btn.textContent = "Save";
+    }
+  }
+
+  // ── Test connection ───────────────────────────────────
+  function clearTestResult() {
+    const el = document.getElementById("test-result");
+    el.className   = "test-result";
+    el.textContent = "";
+  }
+
+  async function testConfig() {
+    // Тества тоeкущата (modified) форма — записваме временно или ползваме saved camera
+    if (editId == null) {
+      toast("Save the camera first to test it (we'll improve this soon)", "err", 4000);
+      return;
+    }
+    const el = document.getElementById("test-result");
+    el.className = "test-result busy";
+    el.innerHTML = '<span class="spinner"></span> Testing…';
+    try {
+      const r = await fetch(`/api/cameras/${editId}/test`, { method: "POST" });
+      const d = await r.json();
+      if (d.ok) {
+        el.className   = "test-result ok";
+        el.textContent = `✓ ${d.message}` + (d.latency_ms ? ` (${d.latency_ms} ms)` : "");
+      } else {
+        el.className   = "test-result err";
+        el.textContent = `✗ ${d.message}`;
+      }
+    } catch (e) {
+      el.className   = "test-result err";
+      el.textContent = `✗ ${e.message}`;
+    }
+  }
+
+  async function testRow(camId) {
+    const pill = document.getElementById(`status-${camId}`);
+    if (pill) {
+      pill.className   = "pill status-unknown";
+      pill.textContent = "Testing…";
+    }
+    try {
+      const r = await fetch(`/api/cameras/${camId}/test`, { method: "POST" });
+      const d = await r.json();
+      if (pill) {
+        if (d.ok) {
+          pill.className   = "pill status-online";
+          pill.textContent = d.latency_ms ? `Online · ${d.latency_ms}ms` : "Online";
+        } else {
+          pill.className   = "pill status-offline";
+          pill.textContent = `Offline`;
+          pill.title       = d.message || "";
+        }
+      }
+    } catch (e) {
+      if (pill) {
+        pill.className   = "pill status-offline";
+        pill.textContent = "Error";
+        pill.title       = String(e);
+      }
+    }
+  }
+
+  // ── Delete modal ──────────────────────────────────────
+  function openDeleteModal(camId) {
+    const cam = CAMERAS.find(c => c.id === camId);
+    if (!cam) return;
+    delId = camId;
+    document.getElementById("del-name").textContent = cam.name;
+    document.getElementById("del-ch").textContent   = cam.channel;
+    document.getElementById("del-recordings").checked = false;
+    document.getElementById("delete-modal").classList.add("open");
+  }
+  function closeDelete() {
+    document.getElementById("delete-modal").classList.remove("open");
+    delId = null;
+  }
+  async function confirmDelete() {
+    if (delId == null) return;
+    const wipe = document.getElementById("del-recordings").checked;
+    const btn = document.getElementById("btn-del");
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deleting…';
+    try {
+      const r = await fetch(`/api/cameras/${delId}?delete_recordings=${wipe}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(`HTTP ${r.status}: ${t}`);
+      }
+      const d = await r.json();
+      const stats = wipe
+        ? `Removed ${d.events ?? 0} events, ${d.face_crops ?? 0} face crops, recordings dir`
+        : "Recordings preserved on disk";
+      toast(`Camera deleted. ${stats}`, "ok", 4500);
+      closeDelete();
+      await loadCameras();
+    } catch (e) {
+      toast(`Delete failed: ${e.message}`, "err", 6000);
+    } finally {
+      btn.disabled = false; btn.textContent = "Delete";
+    }
+  }
+
+  // ── Init ──────────────────────────────────────────────
+  loadCameras();
+
+  // Keyboard: Esc closes any open modal
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      closeForm();
+      closeDelete();
+    }
+  });
+</script>
+</body>
+</html>

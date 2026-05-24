@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/lib/auth-guard.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Detection Events · HomeHub</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e2e8f0; font-family: system-ui,-apple-system,sans-serif; min-height:100vh; }
+
+  /* ── header ── */
+  .header {
+    background: #1a1f2e; border-bottom: 1px solid #2d3748;
+    padding: 12px 20px; display: flex; align-items: center; gap: 14px;
+    position: sticky; top: 0; z-index: 20;
+  }
+  .header h1 { font-size: 1.15rem; font-weight: 700; }
+  .hdr-sub   { font-size: .75rem; color: #718096; margin-top: 2px; }
+  .back-btn  { text-decoration: none; color: #63b3ed; font-size: .82rem; white-space: nowrap; margin-left: auto; }
+
+  /* ── toolbar ── */
+  .toolbar {
+    background: #141821; border-bottom: 1px solid #2d3748;
+    padding: 10px 20px; display: flex; flex-direction: column; gap: 8px;
+  }
+
+  /* camera filter pills */
+  .cam-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    padding: 4px 14px; border-radius: 20px; border: 1px solid #3d4a5c;
+    background: transparent; color: #a0aec0; font-size: .78rem; cursor: pointer; transition: all .15s;
+  }
+  .pill.active { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
+  .pill:hover:not(.active) { border-color: #63b3ed; color: #63b3ed; }
+
+  /* date/time filter row */
+  .date-row {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .78rem; color: #718096;
+  }
+  .date-row input[type=date],
+  .date-row input[type=time] {
+    background: #1a1f2e; border: 1px solid #3d4a5c; color: #e2e8f0;
+    border-radius: 6px; padding: 4px 8px; font-size: .78rem; cursor: pointer;
+  }
+  .date-row input:focus { outline: none; border-color: #63b3ed; }
+  .quick-btn {
+    padding: 4px 10px; background: #2d3748; border: 1px solid #4a5568;
+    color: #e2e8f0; border-radius: 6px; font-size: .75rem; cursor: pointer;
+  }
+  .quick-btn:hover { background: #4a5568; }
+  .clear-filter {
+    padding: 4px 10px; background: transparent; border: 1px solid #742a2a;
+    color: #fc8181; border-radius: 6px; font-size: .75rem; cursor: pointer;
+  }
+  .clear-filter:hover { background: #2d1b1b; }
+
+  /* ── arm row ── */
+  .arm-row {
+    background: #141821; border-bottom: 1px solid #2d3748;
+    padding: 8px 20px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .arm-label  { font-size: .73rem; color: #718096; white-space: nowrap; }
+  .arm-btn {
+    padding: 4px 12px; border-radius: 16px; border: 1px solid #3d4a5c;
+    font-size: .76rem; cursor: pointer; transition: all .15s;
+  }
+  .arm-btn.armed    { background: #22543d; border-color: #276749; color: #9ae6b4; }
+  .arm-btn.disarmed { background: #2d1b1b; border-color: #742a2a; color: #fc8181; }
+  .arm-btn:hover    { opacity: .82; }
+  .ev-count { margin-left: auto; font-size: .73rem; color: #718096; }
+
+  /* ── select mode ── */
+  .select-btn {
+    padding: 4px 12px; border-radius: 16px; border: 1px solid #3d4a5c;
+    background: transparent; color: #a0aec0; font-size: .76rem; cursor: pointer; transition: all .15s;
+  }
+  .select-btn.active { background: #2b4c7e; border-color: #4a90d9; color: #90cdf4; }
+  .select-btn:hover  { border-color: #63b3ed; color: #63b3ed; }
+
+  .sel-bar {
+    display: none; background: #1a2744; border-bottom: 1px solid #2d4a8a;
+    padding: 8px 20px; gap: 10px; flex-wrap: wrap; align-items: center;
+  }
+  .sel-bar.visible { display: flex; }
+  .sel-count { font-size: .82rem; color: #90cdf4; font-weight: 600; flex: 1; }
+  .sel-all-btn {
+    padding: 4px 10px; background: #2d3748; border: 1px solid #4a5568;
+    color: #e2e8f0; border-radius: 6px; font-size: .75rem; cursor: pointer;
+  }
+  .sel-all-btn:hover { background: #4a5568; }
+  .del-sel-btn {
+    padding: 5px 14px; background: #742a2a; border: none;
+    color: #fff; border-radius: 6px; font-size: .8rem; cursor: pointer; font-weight: 600;
+  }
+  .del-sel-btn:hover:not(:disabled)  { background: #9b2c2c; }
+  .del-sel-btn:disabled { opacity: .4; cursor: default; }
+
+  /* card in select mode */
+  .ev-grid.selecting .event-card { cursor: default; }
+  .ev-grid.selecting .event-card:hover { transform: none; }
+  .card-check-wrap {
+    display: none; position: absolute; top: 8px; left: 8px; z-index: 2;
+  }
+  .ev-grid.selecting .card-check-wrap { display: block; }
+  .card-check {
+    width: 20px; height: 20px; accent-color: #4a90d9; cursor: pointer;
+  }
+  .event-card { position: relative; }
+  .event-card.selected { border-color: #4a90d9; box-shadow: 0 0 0 2px #2b6cb044; }
+
+  /* ── per-camera confidence ── */
+  .cam-conf-row {
+    padding: 6px 20px 10px;
+    background: #141821; border-bottom: 1px solid #2d3748;
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  }
+  .conf-label { font-size: .73rem; color: #718096; white-space: nowrap; }
+  .conf-item  { display: flex; align-items: center; gap: 6px; }
+  .conf-item label { font-size: .75rem; color: #a0aec0; white-space: nowrap; }
+  .conf-slider {
+    width: 90px; accent-color: #4a90d9;
+    cursor: pointer;
+  }
+  .conf-val {
+    font-size: .75rem; font-weight: 700; color: #63b3ed;
+    min-width: 30px; text-align: right;
+  }
+
+  /* ── badges ── */
+  .badge {
+    display: inline-block; padding: 2px 7px; border-radius: 12px;
+    font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .badge-person     { background: #c53030; color: #fff; }
+  .badge-car        { background: #2b6cb0; color: #fff; }
+  .badge-motorcycle { background: #6b46c1; color: #fff; }
+  .badge-truck      { background: #744210; color: #fbd38d; }
+  .badge-bus        { background: #285e61; color: #81e6d9; }
+  .badge-cat        { background: #276749; color: #9ae6b4; }
+  .badge-dog        { background: #553c9a; color: #d6bcfa; }
+  .badge-default    { background: #4a5568; color: #e2e8f0; }
+
+  /* ── content ── */
+  .content { padding: 0 20px 40px; }
+
+  /* date separator */
+  .date-sep {
+    grid-column: 1/-1;
+    display: flex; align-items: center; gap: 14px;
+    padding: 22px 0 10px;
+  }
+  .date-sep-label {
+    font-size: .78rem; font-weight: 700; color: #63b3ed;
+    text-transform: uppercase; letter-spacing: .07em; white-space: nowrap;
+  }
+  .date-sep-line { flex: 1; height: 1px; background: #2d3748; }
+  .date-sep-count { font-size: .72rem; color: #4a5568; white-space: nowrap; }
+
+  /* grid */
+  .ev-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .event-card {
+    background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px;
+    overflow: hidden; cursor: pointer; transition: border-color .15s, transform .12s;
+  }
+  .event-card:hover { border-color: #4a90d9; transform: translateY(-2px); }
+  .event-thumb {
+    width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: #0f1117;
+  }
+  .thumb-placeholder {
+    width: 100%; aspect-ratio: 16/9; background: #141821;
+    display: flex; align-items: center; justify-content: center; color: #4a5568; font-size: 2rem;
+  }
+  .event-info { padding: 8px 12px 10px; }
+  .event-cam  { font-size: .72rem; color: #718096; margin-bottom: 3px; }
+  .event-time { font-size: .82rem; font-weight: 600; margin-bottom: 6px; }
+  .event-lbls { display: flex; gap: 4px; flex-wrap: wrap; }
+
+  /* empty */
+  .empty-state {
+    grid-column: 1/-1; text-align: center; padding: 60px 20px; color: #4a5568;
+  }
+  .spinner {
+    width: 34px; height: 34px; border: 3px solid #2d3748; border-top-color: #4a90d9;
+    border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.96); z-index: 100;
+    flex-direction: column;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal-img-area {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; padding: 16px 16px 8px; min-height: 0;
+  }
+  .modal-img-area img {
+    max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px;
+    cursor: zoom-out;
+  }
+
+  .modal-footer {
+    padding: 8px 20px 14px; display: flex; align-items: center;
+    gap: 10px; flex-wrap: wrap; border-top: 1px solid #2d3748; background: #1a1f2e;
+  }
+  .modal-cam  { font-size: .8rem; color: #718096; }
+  .modal-time { font-size: .85rem; font-weight: 600; }
+  .modal-nav  {
+    display: flex; gap: 6px; margin-left: auto;
+  }
+  .nav-btn {
+    padding: 5px 12px; background: #2d3748; border: none; color: #e2e8f0;
+    border-radius: 6px; cursor: pointer; font-size: .82rem;
+  }
+  .nav-btn:hover { background: #4a5568; }
+  .nav-btn:disabled { opacity: .3; cursor: default; }
+  .close-btn {
+    padding: 5px 14px; background: #742a2a; border: none; color: #fff;
+    border-radius: 6px; cursor: pointer; font-size: .82rem;
+  }
+  .close-btn:hover { background: #9b2c2c; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <div class="header h1" style="font-size:1.15rem;font-weight:700">🎯 Events</div>
+    <div class="hdr-sub" id="hdr-sub">Loading…</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a class="back-btn" href="/cameras.html">← Cameras</a>
+    <a class="back-btn" href="/recordings.html">📼 Recordings</a>
+    <a class="back-btn" href="/faces.html">👤 Faces</a>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <div class="cam-pills" id="cam-pills">
+    <button class="pill active" onclick="setCamFilter(this, null)">All</button>
+  </div>
+  <div class="date-row">
+    <span>📅 From:</span>
+    <input type="date" id="f-from" onchange="applyFilter()">
+    <input type="time" id="f-time-from" value="00:00" onchange="applyFilter()">
+    <span>To:</span>
+    <input type="date" id="f-to" onchange="applyFilter()">
+    <input type="time" id="f-time-to" value="23:59" onchange="applyFilter()">
+    <button class="quick-btn" onclick="setToday()">Today</button>
+    <button class="quick-btn" onclick="setYesterday()">Yesterday</button>
+    <button class="clear-filter" onclick="clearFilter()">✕ Clear</button>
+  </div>
+</div>
+
+<!-- Arm row -->
+<div class="arm-row">
+  <span class="arm-label">🔒 Detection:</span>
+  <span id="arm-wrap" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+  <span class="ev-count" id="ev-count"></span>
+  <button class="select-btn" id="select-toggle-btn" onclick="toggleSelectMode()">☑ Select</button>
+  <button class="select-btn" onclick="openBulkDelete()" style="margin-left:6px;color:var(--err,#f87171)">🗑 Bulk delete…</button>
+</div>
+
+<!-- Bulk delete modal -->
+<div class="modal-overlay" id="bulk-modal" style="display:none" onclick="if(event.target===this) closeBulkDelete()">
+  <div style="background:#0d1f35;border:1px solid #1e3a5f;border-radius:12px;width:min(440px,92vw);padding:1.4rem;color:#e2eaf4">
+    <h2 style="font-size:1.05rem;margin-bottom:1rem">🗑 Bulk delete events</h2>
+    <div style="margin-bottom:.9rem">
+      <label style="display:block;font-size:.78rem;font-weight:600;color:#6b8cae;margin-bottom:.3rem">Older than</label>
+      <select id="bulk-days" style="width:100%;padding:.55rem .75rem;background:#112240;color:#e2eaf4;border:1px solid #1e3a5f;border-radius:6px;font-size:.9rem">
+        <option value="1">1 day</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+        <option value="0">--- ALL (no filter) ---</option>
+      </select>
+    </div>
+    <div style="margin-bottom:.9rem">
+      <label style="display:block;font-size:.78rem;font-weight:600;color:#6b8cae;margin-bottom:.3rem">Camera</label>
+      <select id="bulk-channel" style="width:100%;padding:.55rem .75rem;background:#112240;color:#e2eaf4;border:1px solid #1e3a5f;border-radius:6px;font-size:.9rem">
+        <option value="">All cameras</option>
+      </select>
+    </div>
+    <div id="bulk-result" style="margin:.6rem 0;font-size:.85rem;color:#fbbf24;display:none"></div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.2rem">
+      <button class="select-btn" onclick="closeBulkDelete()">Cancel</button>
+      <button class="del-sel-btn" id="bulk-confirm-btn" onclick="confirmBulkDelete()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Selection action bar -->
+<div class="sel-bar" id="sel-bar">
+  <span class="sel-count" id="sel-count">0 selected</span>
+  <button class="sel-all-btn" id="sel-all-btn" onclick="selectAllToggle()">Select all</button>
+  <button class="del-sel-btn" id="del-sel-btn" onclick="deleteSelected()" disabled>🗑 Delete selected</button>
+  <button class="sel-all-btn" onclick="toggleSelectMode()">✕ Cancel</button>
+</div>
+
+<!-- Per-camera confidence -->
+<div class="cam-conf-row" id="conf-row">
+  <span class="conf-label">🎯 Confidence:</span>
+  <span id="conf-items" style="display:flex;gap:12px;flex-wrap:wrap"></span>
+</div>
+
+<!-- Content -->
+<div class="content">
+  <div class="ev-grid" id="ev-grid">
+    <div class="empty-state"><div class="spinner"></div>Loading…</div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" onclick="onModalBg(event)">
+  <div class="modal-img-area">
+    <img id="modal-img" src="" alt="" onclick="closeModal()">
+  </div>
+  <div class="modal-footer">
+    <div>
+      <div class="modal-cam"  id="modal-cam"></div>
+      <div class="modal-time" id="modal-time"></div>
+      <div id="modal-labels" style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap"></div>
+    </div>
+    <div class="modal-nav">
+      <button class="nav-btn" id="btn-prev" onclick="navModal(-1)">◀ Previous</button>
+      <button class="nav-btn" id="btn-next" onclick="navModal(+1)">Next ▶</button>
+    </div>
+    <button class="close-btn" onclick="closeModal()">✕ Close</button>
+  </div>
+</div>
+
+<script>
+  /* ── constants ── */
+  const LABEL_BG = {
+    person:"Person", car:"Car", motorcycle:"Motorcycle", truck:"Truck",
+    bus:"Bus", cat:"Cat", dog:"Dog",
+    bicycle:"Bicycle", horse:"Horse", sheep:"Sheep", cow:"Cow", backpack:"Backpack",
+  };
+  const BADGE_CLS = {
+    person:"badge-person", car:"badge-car", motorcycle:"badge-motorcycle",
+    truck:"badge-truck", bus:"badge-bus", cat:"badge-cat", dog:"badge-dog",
+  };
+
+  /* ── state ── */
+  let _camNames       = {};
+  let _filterCh       = null;
+  let _allEvents      = [];
+  let _filtered       = [];
+  let _armed          = {};
+  let _modalIdx       = -1;   // index in _filtered
+  let _maxEvents      = 1000;
+  let _globalConf     = 0.45;
+  let _camConf        = {};    // ch → min_confidence (null = global)
+  let _selectMode     = false;
+  let _selectedIds    = new Set();
+
+  /* ── helpers ── */
+  function badge(label, suffix = "") {
+    const text = (LABEL_BG[label] || label) + suffix;
+    return `<span class="badge ${BADGE_CLS[label]||'badge-default'}">${text}</span>`;
+  }
+
+  function personSuffix(faces, personCount) {
+    // personCount: actual number of "person" boxes in the frame (from frame_counts)
+    // faces: recognized faces (may be fewer than personCount — some are turned away/far)
+    const named    = (faces || []).filter(f => f.name).map(f => f.name);
+    const unknown  = (faces || []).filter(f => !f.name).length;
+    const detected = named.length + unknown;
+    const missing  = Math.max(0, personCount - detected);
+
+    const parts = [];
+    if (named.length) parts.push(named.join(", "));
+    if (unknown === 1 && !named.length)            parts.push("Unknown");
+    else if (unknown === 1 && named.length)        parts.push("+1 unknown");
+    else if (unknown > 1)                          parts.push(`+${unknown} unknown`);
+    if (missing > 0 && (named.length || unknown))  parts.push(`+${missing} without visible face`);
+    else if (missing > 0)                          parts.push(personCount > 1 ? `${missing}× without visible face` : "?");
+
+    return parts.length ? ` (${parts.join(", ")})` : "";
+  }
+
+  function personBadgeText(personCount, faces) {
+    const base = personCount > 1 ? `People (${personCount})` : "Person";
+    return base + personSuffix(faces, personCount);
+  }
+
+  function badgesFor(ev) {
+    const counts   = ev.frame_counts || {};
+    // Fallback for old events without frame_counts: count from labels
+    const labelsArr = ev.labels || [];
+    const personCount = counts.person || labelsArr.filter(l => l === "person").length || 0;
+
+    // Unique non-person labels (with count if > 1)
+    const otherLabels = new Set(labelsArr.filter(l => l !== "person"));
+    for (const k of Object.keys(counts)) if (k !== "person") otherLabels.add(k);
+
+    const html = [];
+
+    // Person badge — always shown if there is at least 1 person in the frame OR there is face data
+    if (personCount > 0) {
+      const text = personBadgeText(personCount, ev.faces);
+      html.push(`<span class="badge ${BADGE_CLS.person}">${text}</span>`);
+    } else if (ev.faces && ev.faces.length) {
+      // Old track — no new person bbox, but there are recognized faces in the frame
+      const text = personBadgeText(ev.faces.length, ev.faces);
+      html.push(`<span class="badge ${BADGE_CLS.person}" style="opacity:.65" title="already present in frame">${text}</span>`);
+    }
+
+    // Remaining labels (car, dog, cat, ...) with count if > 1
+    for (const l of otherLabels) {
+      const c = counts[l] || labelsArr.filter(x => x === l).length || 1;
+      const bg = LABEL_BG[l] || l;
+      const text = c > 1 ? `${bg} (${c})` : bg;
+      html.push(`<span class="badge ${BADGE_CLS[l] || 'badge-default'}">${text}</span>`);
+    }
+    return html.join("");
+  }
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString("en-US", {
+      weekday:"long", day:"numeric", month:"long", year:"numeric"
+    });
+  }
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString("en-US", {
+      hour:"2-digit", minute:"2-digit", second:"2-digit"
+    });
+  }
+  function fmtFull(iso) {
+    return new Date(iso).toLocaleString("en-US", {
+      day:"2-digit", month:"2-digit", year:"numeric",
+      hour:"2-digit", minute:"2-digit", second:"2-digit"
+    });
+  }
+
+  function todayStr() {
+    const d = new Date(); 
+    return d.toISOString().slice(0, 10);
+  }
+  function yesterdayStr() {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /* ── filters ── */
+  function setCamFilter(btn, ch) {
+    _filterCh = ch;
+    document.querySelectorAll(".pill").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    applyFilter();
+  }
+
+  function applyFilter() {
+    const fromDate = document.getElementById("f-from").value;
+    const toDate   = document.getElementById("f-to").value;
+    const fromTime = document.getElementById("f-time-from").value || "00:00";
+    const toTime   = document.getElementById("f-time-to").value   || "23:59";
+
+    let evs = _allEvents;
+
+    if (_filterCh !== null) {
+      evs = evs.filter(e => e.channel === _filterCh);
+    }
+    if (fromDate) {
+      const from = new Date(`${fromDate}T${fromTime}:00`);
+      evs = evs.filter(e => new Date(e.detected_at) >= from);
+    }
+    if (toDate) {
+      const to = new Date(`${toDate}T${toTime}:59`);
+      evs = evs.filter(e => new Date(e.detected_at) <= to);
+    }
+
+    _filtered = evs;
+    renderGrid(_filtered);
+  }
+
+  function setToday() {
+    const t = todayStr();
+    document.getElementById("f-from").value = t;
+    document.getElementById("f-to").value   = t;
+    document.getElementById("f-time-from").value = "00:00";
+    document.getElementById("f-time-to").value   = "23:59";
+    applyFilter();
+  }
+  function setYesterday() {
+    const y = yesterdayStr();
+    document.getElementById("f-from").value = y;
+    document.getElementById("f-to").value   = y;
+    document.getElementById("f-time-from").value = "00:00";
+    document.getElementById("f-time-to").value   = "23:59";
+    applyFilter();
+  }
+  function clearFilter() {
+    ["f-from","f-to"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("f-time-from").value = "00:00";
+    document.getElementById("f-time-to").value   = "23:59";
+    applyFilter();
+  }
+
+  /* ── render ── */
+  function renderGrid(events) {
+    const grid = document.getElementById("ev-grid");
+
+    // Update the counter: "X shown / Y total / 1000"
+    const shown = events.length;
+    const total = _allEvents.length;
+    const maxEv = _maxEvents || 1000;
+    const countEl = document.getElementById("ev-count");
+    if (countEl) {
+      countEl.textContent = shown === total
+        ? `${total} / ${maxEv}`
+        : `${shown} shown · ${total} total / ${maxEv}`;
+    }
+
+    if (!events.length) {
+      if (_allEvents.length > 0) {
+        // We have data, but the filter is hiding it
+        grid.innerHTML = `
+          <div class="empty-state">
+            No results for the current filter.<br>
+            <small style="color:#718096;font-size:.8rem;margin-top:6px;display:block">
+              Database contains ${_allEvents.length} event${_allEvents.length === 1 ? '' : 's'}.
+            </small>
+            <button class="quick-btn" style="margin-top:12px" onclick="clearFilter()">
+              ✕ Clear filter
+            </button>
+          </div>`;
+      } else {
+        grid.innerHTML = '<div class="empty-state">No events detected</div>';
+      }
+      return;
+    }
+
+    // Group by local date
+    const groups = new Map();
+    events.forEach(ev => {
+      const key = fmtDate(ev.detected_at);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(ev);
+    });
+
+    let html = "";
+    groups.forEach((evs, dateLabel) => {
+      html += `
+        <div class="date-sep">
+          <span class="date-sep-label">${dateLabel}</span>
+          <div class="date-sep-line"></div>
+          <span class="date-sep-count">${evs.length} items</span>
+        </div>`;
+      evs.forEach(ev => {
+        const idx     = _filtered.indexOf(ev);
+        const camName = _camNames[ev.channel] || ("Channel " + ev.channel);
+        const checked = _selectedIds.has(ev.id) ? "checked" : "";
+        const selCls  = _selectedIds.has(ev.id) ? " selected" : "";
+        html += `
+          <div class="event-card${selCls}" id="card-${ev.id}"
+               onclick="_selectMode ? toggleCard(${ev.id}, this) : openModal(${idx})">
+            <label class="card-check-wrap" onclick="event.stopPropagation()">
+              <input class="card-check" type="checkbox" ${checked}
+                     onchange="toggleCard(${ev.id}, this.closest('.event-card'))">
+            </label>
+            <img class="event-thumb"
+                 src="/api/camera/events/${ev.id}/image" alt="" loading="lazy"
+                 onerror="this.style.display='none';this.nextSibling.style.display='flex'">
+            <div class="thumb-placeholder" style="display:none">🖼</div>
+            <div class="event-info">
+              <div class="event-cam">${camName}</div>
+              <div class="event-time">${fmtTime(ev.detected_at)}</div>
+              <div class="event-lbls">${badgesFor(ev)}</div>
+            </div>
+          </div>`;
+      });
+    });
+    grid.innerHTML = html;
+  }
+
+  /* ── modal ── */
+  function openModal(idx) {
+    _modalIdx = idx;
+    showModalFrame();
+    document.getElementById("modal").classList.add("open");
+  }
+
+  function showModalFrame() {
+    const ev      = _filtered[_modalIdx];
+    if (!ev) return;
+    const camName = _camNames[ev.channel] || ("Channel " + ev.channel);
+    document.getElementById("modal-img").src    = `/api/camera/events/${ev.id}/image`;
+    document.getElementById("modal-cam").textContent  = camName;
+    document.getElementById("modal-time").textContent = fmtFull(ev.detected_at);
+    document.getElementById("modal-labels").innerHTML = badgesFor(ev);
+    document.getElementById("btn-prev").disabled = _modalIdx <= 0;
+    document.getElementById("btn-next").disabled = _modalIdx >= _filtered.length - 1;
+  }
+
+  function navModal(dir) {
+    const next = _modalIdx + dir;
+    if (next < 0 || next >= _filtered.length) return;
+    _modalIdx = next;
+    showModalFrame();
+  }
+
+  function closeModal() {
+    document.getElementById("modal").classList.remove("open");
+    document.getElementById("modal-img").src = "";
+    _modalIdx = -1;
+  }
+
+  function onModalBg(e) {
+    if (e.target === document.getElementById("modal")) closeModal();
+  }
+
+  document.addEventListener("keydown", e => {
+    if (!document.getElementById("modal").classList.contains("open")) return;
+    if (e.key === "Escape")      closeModal();
+    if (e.key === "ArrowLeft")   navModal(-1);
+    if (e.key === "ArrowRight")  navModal(+1);
+  });
+
+  /* ── select mode ── */
+  function toggleSelectMode() {
+    _selectMode = !_selectMode;
+    _selectedIds.clear();
+    const grid = document.getElementById("ev-grid");
+    const btn  = document.getElementById("select-toggle-btn");
+    const bar  = document.getElementById("sel-bar");
+    if (_selectMode) {
+      grid.classList.add("selecting");
+      btn.classList.add("active");
+      bar.classList.add("visible");
+    } else {
+      grid.classList.remove("selecting");
+      btn.classList.remove("active");
+      bar.classList.remove("visible");
+    }
+    renderGrid(_filtered);
+  }
+
+  function toggleCard(id, cardEl) {
+    if (!_selectMode) return;
+    const cb = cardEl.querySelector(".card-check");
+    if (_selectedIds.has(id)) {
+      _selectedIds.delete(id);
+      cardEl.classList.remove("selected");
+      if (cb) cb.checked = false;
+    } else {
+      _selectedIds.add(id);
+      cardEl.classList.add("selected");
+      if (cb) cb.checked = true;
+    }
+    updateSelBar();
+  }
+
+  function updateSelBar() {
+    const n   = _selectedIds.size;
+    const del = document.getElementById("del-sel-btn");
+    const cnt = document.getElementById("sel-count");
+    const allBtn = document.getElementById("sel-all-btn");
+    if (cnt) cnt.textContent = n === 0 ? "0 selected" : `${n} selected`;
+    if (del) del.disabled = n === 0;
+    if (allBtn) {
+      allBtn.textContent = _selectedIds.size >= _filtered.length
+        ? "Deselect all"
+        : "Select all";
+    }
+  }
+
+  function selectAllToggle() {
+    if (_selectedIds.size >= _filtered.length) {
+      _selectedIds.clear();
+    } else {
+      _filtered.forEach(ev => _selectedIds.add(ev.id));
+    }
+    renderGrid(_filtered);
+    updateSelBar();
+  }
+
+  async function deleteSelected() {
+    const ids = [..._selectedIds];
+    if (!ids.length) return;
+    const ok = confirm(`Delete ${ids.length} events?\nThis action cannot be undone.`);
+    if (!ok) return;
+
+    const del = document.getElementById("del-sel-btn");
+    del.disabled   = true;
+    del.textContent = "Deleting…";
+    try {
+      const r = await fetch("/api/camera/events", {
+        method:  "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ ids }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const res = await r.json();
+      _selectedIds.clear();
+      // Remove deleted entries from _allEvents and _filtered
+      _allEvents = _allEvents.filter(e => !ids.includes(e.id));
+      _filtered  = _filtered.filter(e => !ids.includes(e.id));
+      renderGrid(_filtered);
+      updateSelBar();
+      del.textContent = "🗑 Delete selected";
+      // Update the counter
+      document.getElementById("hdr-sub").textContent =
+        `${_allEvents.length} events · auto-refresh 30s`;
+    } catch (err) {
+      alert("Delete error: " + err.message);
+      del.disabled = false;
+      del.textContent = "🗑 Delete selected";
+    }
+  }
+
+  /* ── bulk delete by date ── */
+  function openBulkDelete() {
+    const sel = document.getElementById("bulk-channel");
+    sel.innerHTML = '<option value="">All cameras</option>' +
+      (window._allChannels || []).map(c =>
+        `<option value="${c.channel}">${c.name} (ch ${c.channel})</option>`
+      ).join("");
+    document.getElementById("bulk-result").style.display = "none";
+    document.getElementById("bulk-modal").style.display = "flex";
+  }
+  function closeBulkDelete() {
+    document.getElementById("bulk-modal").style.display = "none";
+  }
+  async function confirmBulkDelete() {
+    const days = parseInt(document.getElementById("bulk-days").value);
+    const ch   = document.getElementById("bulk-channel").value;
+    let urlParams = new URLSearchParams();
+    if (days === 0) {
+      if (!confirm("WARNING: ALL events will be deleted!\nThis action is irreversible.")) return;
+      urlParams.set("delete_all", "true");
+    } else {
+      urlParams.set("older_than_days", String(days));
+      const msg = ch
+        ? `Delete events older than ${days} days from camera ${ch}?`
+        : `Delete events older than ${days} days from ALL cameras?`;
+      if (!confirm(msg)) return;
+    }
+    if (ch) urlParams.set("channel", ch);
+
+    const btn = document.getElementById("bulk-confirm-btn");
+    btn.disabled   = true;
+    btn.textContent = "Deleting…";
+    const result = document.getElementById("bulk-result");
+    result.style.display = "block";
+    result.style.color   = "#fbbf24";
+    result.textContent   = "Deleting…";
+    try {
+      const r = await fetch(`/api/camera/events/bulk?${urlParams}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(await r.text());
+      const d = await r.json();
+      result.style.color = "#34d399";
+      result.textContent = `✓ Deleted: ${d.deleted_events} events, ${d.deleted_files} files`;
+      btn.textContent    = "🗑 Delete";
+      btn.disabled       = false;
+      // Reload events list
+      setTimeout(() => { closeBulkDelete(); loadEvents(); }, 1500);
+    } catch (e) {
+      result.style.color = "#f87171";
+      result.textContent = `✗ ${e.message}`;
+      btn.textContent    = "🗑 Delete";
+      btn.disabled       = false;
+    }
+  }
+
+  /* ── load events ── */
+  async function loadEvents() {
+    const url = _filterCh !== null
+      ? `/api/camera/events?channel=${_filterCh}&limit=1000`
+      : `/api/camera/events?limit=1000`;
+    const r    = await fetch(url);
+    const data = await r.json();
+    _allEvents = data.events || [];
+    applyFilter();
+
+    document.getElementById("hdr-sub").textContent =
+      `${_allEvents.length} events · auto-refresh 30s`;
+  }
+
+  /* ── confidence sliders ── */
+  function renderConfSliders(cameras) {
+    const wrap = document.getElementById("conf-items");
+    if (!wrap) return;
+    wrap.innerHTML = cameras.map(c => {
+      const lbl  = _camNames[c.channel] || ("Channel " + c.channel);
+      const val  = c.min_confidence != null ? c.min_confidence : _globalConf;
+      const pct  = Math.round(val * 100);
+      return `
+        <div class="conf-item">
+          <label>${lbl}</label>
+          <input class="conf-slider" type="range" min="10" max="99" value="${pct}"
+            oninput="this.nextSibling.textContent=this.value+'%'"
+            onchange="setConf(${c.channel}, this.value/100)">
+          <span class="conf-val">${pct}%</span>
+        </div>`;
+    }).join("");
+  }
+
+  async function setConf(ch, val) {
+    _camConf[ch] = val;
+    await fetch(`/api/camera/${ch}/detect/confidence`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ min_confidence: val }),
+    });
+  }
+
+  /* ── arm status ── */
+  async function loadArmStatus() {
+    try {
+      const r    = await fetch("/api/camera/detect/config");
+      const data = await r.json();
+      _maxEvents   = data.max_events || 1000;
+      _globalConf  = data.global_confidence || 0.45;
+      data.cameras.forEach(c => {
+        _armed[c.channel]   = c.armed;
+        _camConf[c.channel] = c.min_confidence;
+      });
+      renderArmButtons(data.cameras);
+      renderConfSliders(data.cameras);
+      // Update only the counter, without re-rendering the grid
+      const countEl = document.getElementById("ev-count");
+      if (countEl) {
+        const shown = _filtered.length;
+        const total = Math.max(_allEvents.length, data.total_events || 0);
+        countEl.textContent = shown === _allEvents.length
+          ? `${total} / ${_maxEvents}`
+          : `${shown} shown · ${total} total / ${_maxEvents}`;
+      }
+    } catch (_e) {}
+  }
+
+  function renderArmButtons(cameras) {
+    document.getElementById("arm-wrap").innerHTML = cameras.map(c => {
+      const armed = _armed[c.channel] !== false;
+      const lbl   = _camNames[c.channel] || ("Channel " + c.channel);
+      return `<button class="arm-btn ${armed ? "armed" : "disarmed"}"
+                onclick="toggleArm(${c.channel})">
+        ${armed ? "🟢" : "🔴"} ${lbl}
+      </button>`;
+    }).join("");
+  }
+
+  async function toggleArm(ch) {
+    const newArmed = !(_armed[ch] !== false);
+    _armed[ch] = newArmed;
+    renderArmButtons(Object.keys(_camNames).map(Number).map(c => ({ channel:c, armed:_armed[c]!==false })));
+    await fetch("/api/camera/" + ch + "/detect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ armed: newArmed }),
+    });
+    loadArmStatus();
+  }
+
+  /* ── init ── */
+  async function init() {
+    try {
+      const r    = await fetch("/api/camera/list");
+      const data = await r.json();
+      window._allChannels = data.channels || [];
+      (data.channels || []).forEach(c => { _camNames[c.channel] = c.name; });
+      const pills = document.getElementById("cam-pills");
+      data.channels.forEach(c => {
+        const btn = document.createElement("button");
+        btn.className   = "pill";
+        btn.textContent = c.name;
+        btn.onclick     = () => setCamFilter(btn, c.channel);
+        pills.appendChild(btn);
+      });
+    } catch (_e) {}
+
+    await Promise.all([loadEvents(), loadArmStatus()]);
+    setInterval(loadEvents,    30_000);
+    setInterval(loadArmStatus, 15_000);
+  }
+
+  init().catch(console.error);
+</script>
+</body>
+</html>

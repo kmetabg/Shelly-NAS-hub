@@ -1,0 +1,43 @@
+.env
+.env.local
+.env.*.local
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# Build / packaging
+*.egg-info/
+build/
+dist/
+
+# Runtime / data
+data/
+recordings/
+logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Cursor / Claude project metadata
+.cursor/
+
+# AI model caches (downloaded at build/runtime)
+yolo_config/
+insightface_models/
+*.pt
+!**/static/**/*.pt

@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/lib/auth-guard.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shelly Camera · HomeHub</title>
+  <style>
+    :root {
+      --bg:      #07111e;
+      --surface: #0d1f35;
+      --card:    #112240;
+      --border:  #1e3a5f;
+      --text:    #e2eaf4;
+      --muted:   #6b8cae;
+      --accent:  #38bdf8;
+      --ok:      #34d399;
+      --warn:    #fbbf24;
+      --err:     #f87171;
+      --r:       12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg,#0a2540,#0d3461);
+      border-bottom: 1px solid var(--border);
+      padding: .85rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .hdr-left { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+    .hdr-left h1 { font-size: 1.05rem; font-weight: 700; }
+    .hdr-left .sub { font-size: .75rem; color: var(--muted); margin-top: .1rem; }
+    .hdr-right { display: flex; align-items: center; gap: .6rem; flex-shrink: 0; }
+    .back-btn {
+      font-size: .8rem; color: var(--muted); text-decoration: none;
+      padding: .3rem .7rem; border: 1px solid var(--border);
+      border-radius: 6px; transition: color .15s, border-color .15s;
+    }
+    .back-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    main {
+      max-width: 64rem; margin: 0 auto;
+      padding: 1.25rem 1rem 3rem;
+      display: flex; flex-direction: column; gap: 1rem;
+    }
+
+    /* ── video ─────────────────────────────────────────── */
+    .video-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .video-wrap {
+      position: relative;
+      background: #000;
+      aspect-ratio: 16/9;
+      display: flex; align-items: center; justify-content: center;
+    }
+    video {
+      width: 100%; height: 100%;
+      object-fit: contain; display: block;
+    }
+    .status-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: .75rem;
+      background: #000c;
+      pointer-events: none;
+      transition: opacity .3s;
+    }
+    .status-overlay.hidden { opacity: 0; }
+    .status-icon { font-size: 2.5rem; }
+    .status-text { font-size: .9rem; color: var(--muted); max-width: 22rem; text-align: center; }
+
+    /* ── controls bar ──────────────────────────────────── */
+    .controls-bar {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .7rem 1rem;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .btn {
+      font-size: .85rem; font-weight: 600;
+      padding: .4rem 1.1rem; border-radius: 7px; border: none;
+      cursor: pointer; transition: background .15s, opacity .15s;
+    }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-start {
+      background: var(--ok); color: #061a10;
+    }
+    .btn-start:hover:not(:disabled) { background: #2ec47e; }
+    .btn-stop {
+      background: var(--err); color: #1a0505;
+      display: none;
+    }
+    .btn-stop:hover:not(:disabled) { background: #e05656; }
+    .btn-ptt {
+      background: #1e3a5f; color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .btn-ptt:hover:not(:disabled) { background: #23527a; }
+    .btn-ptt.active {
+      background: var(--accent); color: #061827;
+    }
+    .talkback-wrap {
+      display: flex; align-items: center; gap: .45rem;
+      font-size: .8rem; color: var(--muted);
+    }
+    .talkback-wrap input[type=checkbox] { accent-color: var(--accent); width: 1rem; height: 1rem; }
+    .ptt-controls {
+      display: none; align-items: center; gap: .5rem;
+    }
+    .ptt-status {
+      font-size: .75rem; color: var(--muted); font-style: italic;
+    }
+    .conn-state {
+      margin-left: auto;
+      font-size: .75rem; color: var(--muted);
+    }
+    .conn-badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .2rem .6rem; border-radius: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: .72rem;
+    }
+    .conn-badge .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted);
+    }
+    .conn-badge.connected .dot { background: var(--ok); animation: pulse 2s infinite; }
+    .conn-badge.connecting .dot { background: var(--warn); animation: pulse 1s infinite; }
+    .conn-badge.failed .dot { background: var(--err); }
+
+    @keyframes pulse {
+      0%,100% { opacity:1; } 50% { opacity:.35; }
+    }
+
+    /* ── debug section ─────────────────────────────────── */
+    .debug-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .debug-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .6rem 1rem;
+      cursor: pointer; user-select: none;
+      font-size: .8rem; color: var(--muted);
+    }
+    .debug-toggle:hover { color: var(--text); }
+    .debug-body {
+      display: none;
+      padding: .75rem 1rem;
+      border-top: 1px solid var(--border);
+      display: none; flex-direction: column; gap: .75rem;
+    }
+    .debug-body.open { display: flex; }
+    .debug-group label {
+      font-size: .72rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: .06em; display: block; margin-bottom: .3rem;
+    }
+    .debug-group textarea {
+      width: 100%; height: 7rem;
+      background: var(--surface); color: #9ecbff;
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: .5rem; font-family: monospace; font-size: .72rem;
+      resize: vertical;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-left">
+    <span style="font-size:1.4rem">📹</span>
+    <div>
+      <h1>Shelly Camera</h1>
+      <div class="sub">shellycamera · 192.168.3.227 · WebRTC</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <a href="/" class="back-btn">← Dashboard</a>
+  </div>
+</header>
+
+<main>
+  <!-- video -->
+  <div class="video-card">
+    <div class="video-wrap">
+      <video id="remoteVideo" autoplay playsinline muted></video>
+      <div class="status-overlay" id="statusOverlay">
+        <div class="status-icon">📷</div>
+        <div class="status-text" id="statusText">Press "Start" for WebRTC stream</div>
+      </div>
+    </div>
+
+    <div class="controls-bar">
+      <button class="btn btn-start" id="startBtn" onclick="start()">▶ Start</button>
+      <button class="btn btn-stop"  id="stopBtn"  onclick="stop()">■ Stop</button>
+
+      <label class="talkback-wrap">
+        <input type="checkbox" id="use-talkback" />
+        Talkback (microphone)
+      </label>
+
+      <div class="ptt-controls" id="talkback-controls">
+        <button class="btn btn-ptt" id="ptt-btn" disabled onclick="togglePtt()">PTT</button>
+        <span class="ptt-status" id="ptt-status"></span>
+      </div>
+
+      <div class="conn-state">
+        <span class="conn-badge" id="connBadge">
+          <span class="dot"></span>
+          <span id="connLabel">Disconnected</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- debug -->
+  <div class="debug-section">
+    <div class="debug-toggle" onclick="toggleDebug()">
+      <span>🔧 Diagnostics (SDP / ICE)</span>
+      <span id="debugArrow">›</span>
+    </div>
+    <div class="debug-body" id="debugBody">
+      <div class="debug-group">
+        <label>PC Configuration</label>
+        <textarea id="pcConfigEl" readonly placeholder="—"></textarea>
+      </div>
+      <div class="debug-group">
+        <label>Offer SDP</label>
+        <textarea id="offerEl" readonly placeholder="—"></textarea>
+      </div>
+      <div class="debug-group">
+        <label>Answer SDP</label>
+        <textarea id="answerEl" readonly placeholder="—"></textarea>
+      </div>
+      <div class="debug-group">
+        <label>Errors</label>
+        <textarea id="errorEl" readonly placeholder="—"></textarea>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// RPC goes through nginx proxy (/shelly-rpc/ → http://192.168.3.227/rpc/)
+const SHELLY_RPC_BASE = "/shelly-rpc";
+
+const SHELLY_RTC_SERVERS = [
+  { urls: "turn:turn.shelly.cloud:3478", username: "admin2", credential: "admin2" },
+  { urls: "stun:stun.shelly.cloud:3478" }
+];
+
+const FORMATTED_RTC_SERVERS = SHELLY_RTC_SERVERS.map(s => {
+  if (s.username && s.credential) {
+    return s.urls.replace(":", `://${s.username}:${s.credential}@`);
+  }
+  return s.urls;
+});
+
+const remoteVideo = document.getElementById("remoteVideo");
+
+let started = false;
+let pc = null;
+let pttDc = null;
+let pttActive = false;
+let micStream = null;
+let gotRemoteVideoTrack = false;
+
+// ── UI helpers ──────────────────────────────────────────────────────────
+
+function setStatus(msg) {
+  document.getElementById("statusText").textContent = msg;
+  document.getElementById("statusOverlay").classList.remove("hidden");
+}
+
+function hideStatus() {
+  document.getElementById("statusOverlay").classList.add("hidden");
+}
+
+function setConnBadge(state) {
+  const badge = document.getElementById("connBadge");
+  const label = document.getElementById("connLabel");
+  badge.className = "conn-badge " + state;
+  const labels = { connected: "Connected", connecting: "Connecting…", failed: "Error", "": "Disconnected" };
+  label.textContent = labels[state] || "Disconnected";
+}
+
+function showError(msg) {
+  document.getElementById("errorEl").value = msg;
+  setStatus("⚠ " + msg);
+}
+
+function toggleDebug() {
+  const body = document.getElementById("debugBody");
+  const arrow = document.getElementById("debugArrow");
+  body.classList.toggle("open");
+  arrow.textContent = body.classList.contains("open") ? "˅" : "›";
+}
+
+// ── RPC ─────────────────────────────────────────────────────────────────
+
+async function callRPC(method, params) {
+  const res = await fetch(`${SHELLY_RPC_BASE}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params)
+  });
+  if (!res.ok) {
+    throw new Error(`RPC ${method} failed: ${res.status} ${res.statusText}`);
+  }
+  const data = await res.json();
+  if (data.code && data.message) {
+    throw new Error(`RPC ${method} error ${data.code}: ${data.message}`);
+  }
+  return data;
+}
+
+// ── ICE gathering ────────────────────────────────────────────────────────
+
+function getSdpWithCandidates(peerConn) {
+  return new Promise(resolve => {
+    const ICE_TIMEOUT_MS = 10_000;
+    let resolved = false;
+
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      console.log("ICE gathering finished");
+      resolve(peerConn.localDescription.sdp);
+    };
+
+    const timeout = setTimeout(() => {
+      console.warn("ICE gathering timed out, proceeding with collected candidates");
+      done();
+    }, ICE_TIMEOUT_MS);
+
+    peerConn.onicecandidate = e => {
+      console.log("ICE candidate:", e.candidate);
+      if (e.candidate === null) { clearTimeout(timeout); done(); }
+    };
+
+    peerConn.onicegatheringstatechange = () => {
+      console.log("ICE gathering state:", peerConn.iceGatheringState);
+      if (peerConn.iceGatheringState === "complete") { clearTimeout(timeout); done(); }
+    };
+
+    if (peerConn.iceGatheringState === "complete") { clearTimeout(timeout); done(); }
+  });
+}
+
+// ── Track handlers ───────────────────────────────────────────────────────
+
+function addTrackHandlers(peerConn) {
+  peerConn.ontrack = e => {
+    console.log("ontrack:", e.track.kind);
+
+    if (e.track.kind === "video") {
+      gotRemoteVideoTrack = true;
+      const stream = (e.streams && e.streams.length > 0)
+        ? e.streams[0]
+        : new MediaStream([e.track]);
+      setStatus("Initializing stream…");
+      remoteVideo.srcObject = stream;
+      remoteVideo.play().catch(() => {});
+    } else if (e.track.kind === "audio") {
+      if (remoteVideo.srcObject) {
+        const existing = remoteVideo.srcObject;
+        if (existing.getAudioTracks().length === 0) existing.addTrack(e.track);
+      } else {
+        const stream = (e.streams && e.streams.length > 0)
+          ? e.streams[0]
+          : new MediaStream([e.track]);
+        remoteVideo.srcObject = stream;
+        remoteVideo.play().catch(() => {});
+      }
+    }
+  };
+
+  remoteVideo.oncanplaythrough = () => {
+    remoteVideo.play().catch(err => console.error("play failed:", err));
+    hideStatus();
+    setConnBadge("connected");
+  };
+}
+
+// ── PTT ─────────────────────────────────────────────────────────────────
+
+function setupPttDc(dc) {
+  dc.onopen = () => {
+    const controls = document.getElementById("talkback-controls");
+    const btn = document.getElementById("ptt-btn");
+    const statusEl = document.getElementById("ptt-status");
+    if (controls) controls.style.display = "flex";
+    if (btn) btn.disabled = false;
+    statusEl.textContent = "Ready";
+  };
+  dc.onclose = () => {
+    const btn = document.getElementById("ptt-btn");
+    const statusEl = document.getElementById("ptt-status");
+    if (btn) btn.disabled = true;
+    statusEl.textContent = "DC closed";
+  };
+  dc.onmessage = evt => {
+    try {
+      const msg = JSON.parse(evt.data);
+      const btn = document.getElementById("ptt-btn");
+      const statusEl = document.getElementById("ptt-status");
+      if (msg.ptt) {
+        statusEl.textContent = msg.ptt;
+        if (msg.ptt === "granted") {
+          btn.textContent = "PTT (active)";
+          btn.classList.add("active");
+          pttActive = true;
+        } else if (msg.ptt === "released") {
+          btn.textContent = "PTT";
+          btn.classList.remove("active");
+          pttActive = false;
+        }
+      }
+    } catch (_) {}
+  };
+}
+
+// ── start / stop / togglePtt ─────────────────────────────────────────────
+
+async function start() {
+  if (started) return;
+  started = true;
+  gotRemoteVideoTrack = false;
+  pttActive = false;
+  pttDc = null;
+
+  const talkbackEnabled = document.getElementById("use-talkback").checked;
+
+  setStatus("Initializing WebRTC…");
+  setConnBadge("connecting");
+
+  pc = new RTCPeerConnection({
+    bundlePolicy: "max-bundle",
+    iceServers: SHELLY_RTC_SERVERS
+  });
+
+  document.getElementById("pcConfigEl").value =
+    JSON.stringify(pc.getConfiguration(), null, 2);
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+
+  if (talkbackEnabled) {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        video: false
+      });
+    } catch (e) {
+      showError("No microphone access: " + e.message);
+      started = false;
+      setConnBadge("");
+      return;
+    }
+
+    const audioTr = pc.addTransceiver("audio", { direction: "sendrecv" });
+    const micTrack = micStream.getAudioTracks()[0];
+    if (micTrack) {
+      micTrack.contentHint = "music";
+      audioTr.sender.replaceTrack(micTrack);
+    }
+
+    pttDc = pc.createDataChannel("ptt", { ordered: true });
+    setupPttDc(pttDc);
+  } else {
+    pc.addTransceiver("audio", { direction: "recvonly" });
+  }
+
+  const offer = await pc.createOffer();
+  if (!offer.sdp) {
+    showError("Error in createOffer: SDP is null");
+    started = false;
+    setConnBadge("failed");
+    return;
+  }
+
+  await pc.setLocalDescription(offer);
+
+  setStatus("Gathering ICE candidates…");
+  const offerSdp = await getSdpWithCandidates(pc);
+  document.getElementById("offerEl").value = offerSdp;
+
+  const offerFrame = { sdp: offerSdp, ice_servers: FORMATTED_RTC_SERVERS, stream_id: 0 };
+  console.log("Sending offer to Shelly:", offerFrame);
+
+  let answerFrame;
+  try {
+    setStatus("Waiting for response from camera…");
+    answerFrame = await callRPC("Streamer.GetAnswer", offerFrame);
+  } catch (err) {
+    showError("Streamer.GetAnswer: " + err.message);
+    started = false;
+    setConnBadge("failed");
+    return;
+  }
+
+  addTrackHandlers(pc);
+
+  let answerSdp;
+  try {
+    answerSdp = JSON.parse(answerFrame.sdp).sdp;
+  } catch (_) {
+    answerSdp = answerFrame.sdp;
+  }
+
+  document.getElementById("answerEl").value = answerSdp || "(empty)";
+
+  try {
+    await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+  } catch (err) {
+    showError("setRemoteDescription: " + err.message);
+    setConnBadge("failed");
+  }
+
+  pc.onconnectionstatechange = () => {
+    console.log("Connection state:", pc.connectionState);
+    if (pc.connectionState === "failed") {
+      setConnBadge("failed");
+      setStatus("Connection failed");
+    } else if (pc.connectionState === "connected") {
+      setConnBadge("connected");
+    } else if (pc.connectionState === "connecting" || pc.connectionState === "new") {
+      setConnBadge("connecting");
+    }
+  };
+
+  // Fallback if ontrack doesn't fire (answer without a=msid)
+  if (!gotRemoteVideoTrack) {
+    setTimeout(() => {
+      if (gotRemoteVideoTrack || !pc) return;
+      const receiver = pc.getReceivers().find(r => r.track && r.track.kind === "video");
+      if (!receiver || !receiver.track) return;
+      remoteVideo.srcObject = new MediaStream([receiver.track]);
+      remoteVideo.play().catch(() => {});
+    }, 250);
+  }
+
+  // UI: show Stop button
+  document.getElementById("startBtn").style.display = "none";
+  document.getElementById("stopBtn").style.display = "inline-block";
+}
+
+function stop() {
+  document.getElementById("stopBtn").style.display = "none";
+  document.getElementById("startBtn").style.display = "inline-block";
+
+  const controls = document.getElementById("talkback-controls");
+  const pttBtn   = document.getElementById("ptt-btn");
+  const pttStatusEl = document.getElementById("ptt-status");
+  if (controls) controls.style.display = "none";
+  if (pttBtn) { pttBtn.disabled = true; pttBtn.textContent = "PTT"; pttBtn.classList.remove("active"); }
+  if (pttStatusEl) pttStatusEl.textContent = "";
+
+  if (pttDc && pttDc.readyState === "open" && pttActive) {
+    try { pttDc.send(JSON.stringify({ action: "ptt", state: "off" })); } catch (_) {}
+  }
+  pttActive = false;
+  pttDc = null;
+
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+
+  if (pc) {
+    if (pc.getTransceivers) pc.getTransceivers().forEach(tr => { if (tr.stop) tr.stop(); });
+    pc.getSenders().forEach(s => { if (s.track) s.track.stop(); });
+    setTimeout(() => { pc && pc.close(); pc = null; }, 500);
+  }
+
+  remoteVideo.srcObject = null;
+  started = false;
+  setStatus("Stopped. Press \"Start\" to reconnect.");
+  setConnBadge("");
+}
+
+function togglePtt() {
+  if (!pttDc || pttDc.readyState !== "open") return;
+  if (pttActive) {
+    pttDc.send(JSON.stringify({ action: "ptt", state: "off" }));
+  } else {
+    pttDc.send(JSON.stringify({ action: "ptt", state: "on" }));
+    document.getElementById("ptt-status").textContent = "requesting…";
+  }
+}
+</script>
+</body>
+</html>
