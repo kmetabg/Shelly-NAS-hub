@@ -8,6 +8,7 @@
  *   - извиква /api/auth/whoami
  *   - ако auth_enabled=true && !user  →  redirect към /login.html?next=<тук>
  *   - inline (не async): блокира rendering-а на UI до приключване
+ *   - inject-ва Account/Logout link в съществуващото menu/nav (не fixed widget)
  *
  * За API endpoints — ако backend върне 401, никой UI не може да caches-ва нищо.
  */
@@ -25,66 +26,117 @@
       if (d.auth_enabled && !d.user) {
         const next = location.pathname + location.search;
         location.replace("/login.html?next=" + encodeURIComponent(next));
-        return; // Не показвай UI
+        return;
       }
       document.documentElement.style.visibility = "";
-      window.HOMEHUB_AUTH = d;   // {auth_enabled, user}
-      injectUserWidget(d);
+      window.HOMEHUB_AUTH = d;
+      injectAccountLinks(d);
     })
     .catch(() => {
-      // При мрежова грешка показваме UI (auth може да е disabled)
       document.documentElement.style.visibility = "";
     });
 
   /**
-   * Inject малък user widget top-right (само ако auth е enabled и сме logged in
-   * и страницата НЕ е /account.html — там вече има account info).
-   * Минимален CSS, fixed position — не пречи на съществуващия layout.
+   * Inject "Account" + "Logout" в съществуващото menu/nav на страницата,
+   * без fixed positioning — за да не припокрива заглавието.
+   *
+   * Стратегия (опитваме поред, спираме при първи match):
+   *   1. <header> .hdr-right            (cameras.html, cameras-config.html)
+   *   2. <header> nav, <header> .nav    (recordings.html, faces.html)
+   *   3. .header > div:last-child       (events.html — div-based header)
+   *   4. <header> directly              (shelly-cam.html и др.)
+   *
+   * НЕ инжектираме на /account.html (страницата вече показва user info)
+   * и на /login.html.
    */
-  function injectUserWidget(authData) {
+  function injectAccountLinks(authData) {
     if (!authData.auth_enabled || !authData.user) return;
     if (location.pathname === "/account.html") return;
-    if (document.getElementById("homehub-user-widget")) return;
+    if (document.getElementById("homehub-account-links")) return;
 
-    const css = `
-      #homehub-user-widget {
-        position: fixed; top: 8px; right: 12px; z-index: 9999;
-        font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: rgba(22,27,34,.85); color: #e6edf3;
-        border: 1px solid #30363d; border-radius: 6px;
-        padding: 4px 10px; backdrop-filter: blur(4px);
-        display: flex; align-items: center; gap: 8px;
-      }
-      #homehub-user-widget a {
-        color: #58a6ff; text-decoration: none;
-      }
-      #homehub-user-widget a:hover { text-decoration: underline; }
-      #homehub-user-widget .sep { color: #30363d; }
-      @media (max-width: 480px) {
-        #homehub-user-widget { font-size: 11px; padding: 3px 8px; gap: 6px; }
-      }
-    `;
-    const style = document.createElement("style");
-    style.textContent = css;
-    document.head.appendChild(style);
+    // Намираме контейнера за link-овете в реда по-горе.
+    const container =
+      document.querySelector("header .hdr-right") ||
+      document.querySelector("header nav") ||
+      document.querySelector("header .nav") ||
+      document.querySelector(".header > div:last-child") ||
+      document.querySelector("header");
 
-    const widget = document.createElement("div");
-    widget.id = "homehub-user-widget";
-    widget.innerHTML =
-      `<span>👤 ${escapeHtml(authData.user)}</span>` +
-      `<span class="sep">·</span>` +
-      `<a href="/account.html">Account</a>` +
-      `<span class="sep">·</span>` +
-      `<a href="#" id="homehub-logout">Logout</a>`;
-    document.body.appendChild(widget);
+    if (!container) {
+      // Няма header → fallback към минимален inline widget в края на body
+      // (по-добре от fixed overlap).
+      injectFallbackInline(authData);
+      return;
+    }
 
-    document.getElementById("homehub-logout").addEventListener("click", async (e) => {
+    const wrap = document.createElement("span");
+    wrap.id = "homehub-account-links";
+    wrap.style.cssText =
+      "display: inline-flex; align-items: center; gap: 6px; " +
+      "margin-left: 6px;";
+
+    const accountLink = document.createElement("a");
+    accountLink.href = "/account.html";
+    accountLink.title = `Logged in as ${authData.user}`;
+    accountLink.textContent = `👤 ${authData.user}`;
+    inheritStylesFromSibling(container, accountLink);
+
+    const logoutLink = document.createElement("a");
+    logoutLink.href = "#";
+    logoutLink.textContent = "Logout";
+    logoutLink.title = "Sign out";
+    inheritStylesFromSibling(container, logoutLink);
+    logoutLink.addEventListener("click", async (e) => {
       e.preventDefault();
       try {
         await fetch("/api/auth/logout", { method: "POST" });
       } catch {}
       location.href = "/login.html";
     });
+
+    wrap.appendChild(accountLink);
+    wrap.appendChild(logoutLink);
+    container.appendChild(wrap);
+  }
+
+  /**
+   * Копира class-овете на първия sibling link/бутон в `container`,
+   * за да изглежда новият елемент като останалите menu items
+   * (back-btn, nav links и т.н.).
+   */
+  function inheritStylesFromSibling(container, el) {
+    const sibling =
+      container.querySelector("a, button");
+    if (sibling && sibling.className) {
+      el.className = sibling.className;
+    } else {
+      // Минимален fallback стил
+      el.style.cssText =
+        "color: #58a6ff; text-decoration: none; font-size: 13px;";
+    }
+  }
+
+  function injectFallbackInline(authData) {
+    const bar = document.createElement("div");
+    bar.id = "homehub-account-links";
+    bar.style.cssText =
+      "padding: 6px 12px; background: #161b22; border-bottom: 1px solid #30363d; " +
+      "font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; " +
+      "color: #e6edf3; display: flex; justify-content: flex-end; gap: 12px;";
+    bar.innerHTML =
+      `<span>👤 ${escapeHtml(authData.user)}</span>` +
+      `<a href="/account.html" style="color:#58a6ff;text-decoration:none">Account</a>` +
+      `<a href="#" id="homehub-logout-fallback" style="color:#58a6ff;text-decoration:none">Logout</a>`;
+    document.body.insertBefore(bar, document.body.firstChild);
+    document
+      .getElementById("homehub-logout-fallback")
+      .addEventListener("click", async (e) => {
+        e.preventDefault();
+        try {
+          await fetch("/api/auth/logout", { method: "POST" });
+        } catch {}
+        location.href = "/login.html";
+      });
   }
 
   function escapeHtml(s) {
