@@ -28,7 +28,17 @@
 
 ## Screenshots
 
-> _Add your own_  — `static/screenshots/` is a good place.
+### Live grid — multi-camera view with per-camera controls
+![Live cameras grid](docs/screenshots/01-live-grid.png)
+
+### Camera management — add/edit/delete + per-camera retention & storage
+![Cameras configuration](docs/screenshots/02-cameras-config.png)
+
+### Recordings — 24/7 timeline with detection markers + HLS playback
+![Recordings timeline](docs/screenshots/03-recordings.png)
+
+### Detection events — filterable by camera, day & confidence
+![Events feed](docs/screenshots/04-events.png)
 
 ## Quick Start (Docker Compose)
 
