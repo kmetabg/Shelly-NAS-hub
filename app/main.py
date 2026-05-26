@@ -3822,6 +3822,20 @@ async def recordings_live_segment(ch: int, filename: str):
     )
 
 
+@app.get("/api/recordings/{ch}/{filename}")
+async def recordings_live_segment_compat(ch: int, filename: str):
+    """HLS .ts segments на сибling-path до playlist-а.
+
+    Playlist (`/api/recordings/{ch}/live.m3u8`) сервира segments като relative
+    URLs (`live3969.ts`), които hls.js resolve-ва спрямо playlist directory →
+    `/api/recordings/{ch}/live3969.ts` (БЕЗ `/live/` префикс). Този endpoint
+    proxy-ра към `recordings_live_segment` за всички `liveN.ts` заявки.
+    """
+    if not (filename.startswith("live") and filename.endswith(".ts")):
+        raise HTTPException(404)
+    return await recordings_live_segment(ch, filename)
+
+
 class DetectArmBody(BaseModel):
     armed: bool
 
