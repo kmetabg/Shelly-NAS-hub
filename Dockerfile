@@ -1,3 +1,22 @@
+# ── Stage 1: shelly-webrtc-grab (Go) ──────────────────────────────────────
+# Small Go binary that opens a WebRTC connection to a Shelly Plus/Pro camera
+# (Streamer.Offer/Answer RPC), reassembles the H.264 RTP stream and writes
+# an Annex-B byte-stream to stdout. FFmpeg ingests it on stdin to produce
+# both 1-minute MP4 segments and a rolling HLS playlist.
+#
+# WHY this is required: Shelly cameras have no public RTSP server (firmware
+# only exposes WebRTC). Without this binary, recording for cameras of type
+# `shelly` will silently fail (snapshots and AI detection still work because
+# they use HTTP /camera/0/snapshot, not WebRTC).
+FROM golang:1.22-alpine AS gobuilder
+WORKDIR /build
+COPY shelly-webrtc/go.mod shelly-webrtc/go.sum ./
+RUN go mod download
+COPY shelly-webrtc/main.go ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o shelly-webrtc-grab .
+
+
+# ── Stage 2: Python application ───────────────────────────────────────────
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -33,6 +52,10 @@ app = insightface.app.FaceAnalysis(name='buffalo_l', root='/app/insightface_mode
     providers=['CPUExecutionProvider'], allowed_modules=['detection','recognition']); \
 app.prepare(ctx_id=-1, det_size=(640,640))" && \
     echo "InsightFace buffalo_l downloaded"
+
+# Pull in the Go binary built in Stage 1 → /usr/local/bin so the Python
+# subprocess.create_subprocess_exec("shelly-webrtc-grab", …) call resolves.
+COPY --from=gobuilder /build/shelly-webrtc-grab /usr/local/bin/shelly-webrtc-grab
 
 COPY app ./app
 COPY static ./static

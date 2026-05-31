@@ -151,6 +151,51 @@ Browser ─▶ nginx :80 ─┬─▶ static/* (HTML, JS, CSS)
 
 Full list at `/docs` (FastAPI Swagger UI).
 
+## Troubleshooting
+
+### Recordings are not being saved (only snapshots / events appear)
+
+**Short answer:** no, NFS does **not** need to be configured on the camera —
+the hub pulls the stream itself. If recordings are missing, one of the
+following is the cause:
+
+1. **Old image without the `shelly-webrtc-grab` Go binary** *(the most common
+   case for `shelly` camera type)*. Shelly cameras don't expose RTSP — the
+   hub has to talk WebRTC to them via a small Go helper that ships inside
+   the Docker image. If you built before this binary was added, snapshots
+   and AI events still work (HTTP), but recording silently fails. **Fix:**
+   ```bash
+   git pull
+   docker compose build --no-cache app
+   docker compose up -d
+   ```
+2. **Recording is disarmed for that camera.** Open `/cameras.html`, click
+   the cog on the camera tile, and check that **"24/7 recording"** is on.
+   You can also `curl http://HOST/api/recordings/cameras` and look at the
+   `armed` flag.
+3. **The `/recordings` volume is read-only or out of space.** Check with
+   `docker compose exec app df -h /recordings` and
+   `ls -la /recordings/<channel>/`. The hub auto-prunes when usage exceeds
+   `RECORDING_DISK_LIMIT_PCT` (default 90 %) — if the disk is already that
+   full, no new segments are written.
+4. **FFmpeg can't reach the camera.** Inspect logs:
+   ```bash
+   docker compose logs --tail=200 app | grep -E "ffmpeg|FFmpeg|cam[0-9]"
+   ```
+   For RTSP cameras verify the URL with VLC first. For Shelly cameras
+   verify `http://<camera-ip>/rpc/Streamer.Offer` returns SDP when called
+   from the host running Docker.
+5. **Camera works for snapshots but not stream.** Some Shelly firmwares
+   require WebRTC to be enabled in the camera's web UI under
+   *Settings → Streaming*.
+
+### "All Live" tiles stay black with a spinner
+
+Hard-refresh the browser (Cmd/Ctrl + Shift + R) — `hls.js` is cached
+aggressively. If it persists, check `docker compose logs nginx` for 404s
+on `*.ts` segments — they should resolve to
+`/api/recordings/<ch>/live/liveN.ts`.
+
 ## Development
 
 The HTML UI is plain static files served by nginx — **no rebuild needed**:
