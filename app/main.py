@@ -1804,10 +1804,19 @@ def _last_segment_mtime(ch: int) -> float | None:
         return None
     latest_mtime = 0.0
     try:
-        for day_dir in sorted(cam_dir.iterdir(), reverse=True)[:2]:
-            if not day_dir.is_dir() or day_dir.name == "live":
-                continue
-            for hour_dir in sorted(day_dir.iterdir(), reverse=True)[:2]:
+        # Само истинските day дирове (YYYYMMDD), без "live" и др.
+        day_dirs = [
+            d for d in sorted(cam_dir.iterdir(), reverse=True)
+            if d.is_dir() and d.name != "live" and d.name.isdigit()
+        ]
+        for day_dir in day_dirs[:2]:
+            # ВАЖНО: recorder start-ът пре-създава ВСИЧКИ 24 часови дирове за
+            # деня (мн. от тях празни/бъдещи). Затова НЕ ограничаваме до top-2
+            # часа — обхождаме всички в обратен ред докато намерим час със
+            # segment-и. Иначе празните часове "23","22" → latest=0 → None →
+            # watchdog фалшиво рестартира recorder-а (regression: причиняваше
+            # WHEP churn → flip към MJPEG за Shelly камерите).
+            for hour_dir in sorted(day_dir.iterdir(), reverse=True):
                 if not hour_dir.is_dir():
                     continue
                 for mp4 in hour_dir.glob("*.mp4"):
@@ -1818,7 +1827,7 @@ def _last_segment_mtime(ch: int) -> float | None:
                     except Exception:
                         pass
                 if latest_mtime > 0:
-                    break
+                    break  # намерихме най-новия час със segment-и за този ден
             if latest_mtime > 0:
                 break
     except Exception:
@@ -1974,11 +1983,19 @@ async def _spawn_ffmpeg_recorder(ch: int, ch_name: str) -> asyncio.subprocess.Pr
     is_shelly = shelly_cam is not None
 
     if is_shelly:
-        # shelly-webrtc-grab → OS pipe → ffmpeg stdin (H.264 Annex-B, 1920×1080 @ 25fps)
+        # shelly-webrtc-grab → OS pipe → ffmpeg stdin (H.264 Annex-B, 1920×1080)
         # Нямаме stdin_arg тук — pipe се прави с os.pipe() по-долу
+        # ВАЖНО: суровият H.264 от WebRTC pipe-а НЯМА timestamps (PTS). С `-r 25`
+        # ffmpeg слагаше "no pts" → HLS muxer-ът се чупеше с "Error muxing a
+        # packet" → AVERROR_INVALIDDATA (rc=183) → recorder restart loop.
+        # `-use_wallclock_as_timestamps 1` щампова всеки входящ кадър с wall-clock
+        # време → коректни монотонни PTS за `-segment_atclocktime` + HLS (copy).
         input_args = [
+            "-use_wallclock_as_timestamps", "1",
+            "-fflags", "+genpts",
+            "-analyzeduration", "10M",
+            "-probesize", "10M",
             "-f", "h264",
-            "-r", "25",       # camera stream framerate
             "-i", "pipe:0",   # read H.264 Annex-B from stdin (pipe read-end)
         ]
         codec_args = [
@@ -2243,12 +2260,6 @@ async def _recording_loop() -> None:
 
                 if need_restart:
                     _LOGGER.warning("Recording cam%d: %s → restart", ch, reason)
-                    if proc and proc.returncode is None:
-                        try:
-                            proc.kill()
-                            await asyncio.wait_for(proc.wait(), 5.0)
-                        except Exception:
-                            pass
                     if proc and proc.stderr:
                         try:
                             tail = await asyncio.wait_for(proc.stderr.read(2000), 1.0)
@@ -2256,7 +2267,11 @@ async def _recording_loop() -> None:
                                 _LOGGER.debug("ffmpeg stderr cam%d: %s", ch, tail.decode(errors="ignore")[-500:])
                         except Exception:
                             pass
-                    _recording_procs.pop(ch, None)
+                    # Пълно спиране — вкл. Shelly Go WebRTC процеса + feeder-а.
+                    # Иначе старият shelly-webrtc-grab остава жив, държи WHEP
+                    # сесията на камерата → новият handshake получава 5xx →
+                    # recorder-ът фалшиво минава на MJPEG fallback.
+                    await _stop_recorder(ch)
                     if await _start_recorder(ch):
                         st = _recording_stats.setdefault(ch, {})
                         st["restarts"] = st.get("restarts", 0) + 1
