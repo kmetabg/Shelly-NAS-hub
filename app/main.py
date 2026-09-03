@@ -1906,6 +1906,50 @@ _shelly_webrtc_procs: dict[int, asyncio.subprocess.Process]    = {}  # Go WebRTC
 SHELLY_RECORDING_FPS = 5      # output framerate
 SHELLY_RECORDING_RES = "1280x720"  # реална резолюция на /camera/0/snapshot от новия firmware
 
+# RTSP порт на вградения Shelly RTSP сървър (malmStreamer). Firmware ≥ есен 2026
+# (Shelly/fw/shelly-ng → libs/shelly-camera): `camera.rtsp.enable`, default false.
+SHELLY_RTSP_PORT = 554
+
+
+def _shelly_rtsp_url(ip: str, stream: int = 0) -> str:
+    """RTSP URL на вградения Shelly RTSP сървър.
+
+    stream 0 = main (H.264 1920×1080 @ 25fps + AAC), stream 1 = secondary
+    (640×360 @ 10fps). Формат: `rtsp://<ip>:554/stream/<idx>`.
+    """
+    return f"rtsp://{ip}:{SHELLY_RTSP_PORT}/stream/{stream}"
+
+
+async def _shelly_ensure_rtsp(ip: str, timeout_s: float = 6.0) -> bool:
+    """Проверява за вграден RTSP сървър и го включва ако трябва.
+
+    `Camera.GetConfig` → ако липсва `rtsp` ключ → стар firmware без RTSP → False.
+    Ако `rtsp.enable` е false → `Camera.SetConfig {rtsp:{enable:true}}` (без
+    restart на новия firmware). Връща True само ако RTSP е включен → recorder-ът
+    минава по унифицирания RTSP `-c copy` път (както NVR). False → fallback WebRTC.
+    """
+    base = f"http://{ip}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            r = await client.get(f"{base}/rpc/Camera.GetConfig", params={"id": 0})
+            if r.status_code != 200:
+                return False
+            rtsp = r.json().get("rtsp")
+            if not isinstance(rtsp, dict):
+                return False  # firmware без RTSP поддръжка
+            if rtsp.get("enable") is True:
+                return True
+            sr = await client.post(
+                f"{base}/rpc/Camera.SetConfig",
+                json={"id": 0, "config": {"rtsp": {"enable": True}}},
+            )
+            if sr.status_code != 200:
+                return False
+            r2 = await client.get(f"{base}/rpc/Camera.GetConfig", params={"id": 0})
+            return bool(r2.status_code == 200 and (r2.json().get("rtsp") or {}).get("enable"))
+    except Exception:
+        return False
+
 
 async def _shelly_jpeg_feeder(
     ch: int,
@@ -1981,15 +2025,44 @@ async def _spawn_ffmpeg_recorder(ch: int, ch_name: str) -> asyncio.subprocess.Pr
 
     shelly_cam = next((c for c in _shelly_cams_list() if c["ch"] == ch), None)
     is_shelly = shelly_cam is not None
+    shelly_mode = None  # 'rtsp' | 'webrtc'
 
     if is_shelly:
-        # shelly-webrtc-grab → OS pipe → ffmpeg stdin (H.264 Annex-B, 1920×1080)
-        # Нямаме stdin_arg тук — pipe се прави с os.pipe() по-долу
-        # ВАЖНО: суровият H.264 от WebRTC pipe-а НЯМА timestamps (PTS). С `-r 25`
-        # ffmpeg слагаше "no pts" → HLS muxer-ът се чупеше с "Error muxing a
-        # packet" → AVERROR_INVALIDDATA (rc=183) → recorder restart loop.
-        # `-use_wallclock_as_timestamps 1` щампова всеки входящ кадър с wall-clock
-        # време → коректни монотонни PTS за `-segment_atclocktime` + HLS (copy).
+        # Auto-detect: предпочитаме вградения Shelly RTSP сървър (firmware ≥ есен
+        # 2026) — H.264 + AAC с реални RTP timestamps → `-c copy`, 0 CPU,
+        # унифициран с NVR пътя (без pion/PTS проблемите). Fallback → WebRTC
+        # (shelly-webrtc-grab / WHEP) за стар firmware без RTSP.
+        env_mode = (os.getenv("SHELLY_RECORDING_MODE") or "auto").strip().lower()
+        if env_mode in ("rtsp", "webrtc"):
+            shelly_mode = env_mode
+        elif await _shelly_ensure_rtsp(shelly_cam["ip"]):
+            shelly_mode = "rtsp"
+        else:
+            shelly_mode = "webrtc"
+        _LOGGER.info("Recording cam%d: Shelly режим=%s", ch, shelly_mode)
+
+    if is_shelly and shelly_mode == "rtsp":
+        # Вграден Shelly RTSP сървър → същият път като NVR (`-c copy`).
+        stream_idx = 0 if recording_settings.quality == "main" else 1
+        input_args = [
+            "-rtsp_transport", "tcp",
+            "-timeout", "30000000",
+            "-i", _shelly_rtsp_url(shelly_cam["ip"], stream_idx),
+        ]
+        audio_args = [] if recording_settings.audio else ["-an"]
+        codec_args = [
+            "-map", "0:v",
+            *(["-map", "0:a?"] if recording_settings.audio else []),
+            "-c", "copy",
+            *audio_args,
+        ]
+        seg_codec  = codec_args
+        hls_codec  = list(codec_args)
+        stdin_arg  = asyncio.subprocess.DEVNULL
+    elif is_shelly:
+        # WebRTC fallback: shelly-webrtc-grab → OS pipe → ffmpeg stdin (H.264
+        # Annex-B). Суровият H.264 НЯМА timestamps → `-use_wallclock_as_timestamps`
+        # дава монотонни PTS (иначе HLS muxer-ът → rc=183 restart loop).
         input_args = [
             "-use_wallclock_as_timestamps", "1",
             "-fflags", "+genpts",
@@ -2049,7 +2122,10 @@ async def _spawn_ffmpeg_recorder(ch: int, ch_name: str) -> asyncio.subprocess.Pr
         hls_playlist,
     ]
 
-    src_type = "Shelly WebRTC (H.264 1920×1080)" if is_shelly else "NVR RTSP"
+    if is_shelly:
+        src_type = "Shelly RTSP (H.264 + AAC copy)" if shelly_mode == "rtsp" else "Shelly WebRTC (H.264 1920×1080)"
+    else:
+        src_type = "NVR RTSP"
     _LOGGER.info(
         "Recording cam%d (%s, %s): стартирам FFmpeg → %s + live HLS",
         ch, ch_name, src_type, cam_dir,
@@ -2059,7 +2135,7 @@ async def _spawn_ffmpeg_recorder(ch: int, ch_name: str) -> asyncio.subprocess.Pr
         for h in range(24):
             (cam_dir / now.strftime("%Y%m%d") / f"{h:02d}").mkdir(parents=True, exist_ok=True)
 
-        if is_shelly:
+        if is_shelly and shelly_mode == "webrtc":
             # OS pipe: Go binary stdout → ffmpeg stdin
             import os as _os
             r_fd, w_fd = _os.pipe()
