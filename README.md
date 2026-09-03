@@ -13,7 +13,9 @@
 ## Features
 
 - **Multi-camera support**
-  - Shelly Plus/Pro Cameras (HTTP snapshot + WebRTC stream)
+  - Shelly Plus/Pro Cameras — **built-in RTSP** (firmware ≥ autumn 2026,
+    auto-enabled by the hub), with WebRTC/WHEP + HTTP-snapshot fallback for
+    older firmware
   - Generic RTSP cameras (Reolink, IMOU, Hikvision, Dahua, …)
   - Dahua-compatible NVR/DVR channels
 - **AI object detection** with [YOLO26 / YOLOv8](https://ultralytics.com/)
@@ -159,16 +161,24 @@ Full list at `/docs` (FastAPI Swagger UI).
 the hub pulls the stream itself. If recordings are missing, one of the
 following is the cause:
 
-1. **Old image without the `shelly-webrtc-grab` Go binary** *(the most common
-   case for `shelly` camera type)*. Shelly cameras don't expose RTSP — the
-   hub has to talk WebRTC to them via a small Go helper that ships inside
-   the Docker image. If you built before this binary was added, snapshots
-   and AI events still work (HTTP), but recording silently fails. **Fix:**
-   ```bash
-   git pull
-   docker compose build --no-cache app
-   docker compose up -d
-   ```
+1. **Shelly recording mode.** How the hub records a `shelly` camera is
+   auto-detected (override with `SHELLY_RECORDING_MODE=auto|rtsp|webrtc|mjpeg`):
+   - **`rtsp` (preferred, firmware ≥ autumn 2026):** recent Shelly firmware
+     ships a **built-in RTSP server** (port 554). The hub auto-enables it via
+     `Camera.SetConfig` and records with `ffmpeg -rtsp_transport tcp -c copy`
+     (H.264 + AAC, real timestamps, zero transcoding) — same path as generic
+     RTSP/NVR cameras. This is the most reliable mode.
+   - **`webrtc` (fallback, older firmware):** talks WebRTC/WHEP via the
+     `shelly-webrtc-grab` Go helper baked into the Docker image. If you built
+     an **old image without that binary**, snapshots and AI events still work
+     (HTTP) but recording silently fails — rebuild to fix:
+     ```bash
+     git pull
+     docker compose build --no-cache app
+     docker compose up -d
+     ```
+   - **`mjpeg` (last resort):** HTTP snapshot polling → x264. Works on any
+     firmware but lowest quality.
 2. **Recording is disarmed for that camera.** Open `/cameras.html`, click
    the cog on the camera tile, and check that **"24/7 recording"** is on.
    You can also `curl http://HOST/api/recordings/cameras` and look at the
@@ -182,12 +192,15 @@ following is the cause:
    ```bash
    docker compose logs --tail=200 app | grep -E "ffmpeg|FFmpeg|cam[0-9]"
    ```
-   For RTSP cameras verify the URL with VLC first. For Shelly cameras
-   verify `http://<camera-ip>/rpc/Streamer.Offer` returns SDP when called
-   from the host running Docker.
-5. **Camera works for snapshots but not stream.** Some Shelly firmwares
-   require WebRTC to be enabled in the camera's web UI under
-   *Settings → Streaming*.
+   For RTSP cameras verify the URL with VLC first. For Shelly cameras on
+   recent firmware, test the built-in RTSP stream:
+   `ffprobe rtsp://<camera-ip>:554/stream/0` (the hub auto-enables RTSP, but
+   you can also toggle it via
+   `curl http://<camera-ip>/rpc/Camera.SetConfig -d '{"id":0,"config":{"rtsp":{"enable":true}}}'`).
+5. **Older Shelly firmware without RTSP.** The hub falls back to WebRTC. If
+   the stream still fails, verify `http://<camera-ip>/rpc/Streamer.Offer`
+   (or the newer WHEP endpoint `/camera/0/whep/0`) responds, and that
+   streaming is enabled in the camera web UI under *Settings → Streaming*.
 
 ### "All Live" tiles stay black with a spinner
 
