@@ -1,0 +1,339 @@
+{
+  "_meta": {
+    "name": "English",
+    "code": "en"
+  },
+  "phrases": {
+    "seen": "I see: {items}.",
+    "nothing": "Nothing specific is visible in the frame.",
+    "separator": ", ",
+    "count": "{n} {word}"
+  },
+  "errors": {
+    "camera_not_found": "Camera not found",
+    "snapshot_failed": "Could not get a snapshot from the camera",
+    "missing_jpeg": "Missing JPEG body"
+  },
+  "labels": {
+    "0": {
+      "one": "person",
+      "other": "people"
+    },
+    "1": {
+      "one": "bicycle",
+      "other": "bicycles"
+    },
+    "2": {
+      "one": "car",
+      "other": "cars"
+    },
+    "3": {
+      "one": "motorcycle",
+      "other": "motorcycles"
+    },
+    "4": {
+      "one": "airplane",
+      "other": "airplanes"
+    },
+    "5": {
+      "one": "bus",
+      "other": "buses"
+    },
+    "6": {
+      "one": "train",
+      "other": "trains"
+    },
+    "7": {
+      "one": "truck",
+      "other": "trucks"
+    },
+    "8": {
+      "one": "boat",
+      "other": "boats"
+    },
+    "9": {
+      "one": "traffic light",
+      "other": "traffic lights"
+    },
+    "10": {
+      "one": "fire hydrant",
+      "other": "fire hydrants"
+    },
+    "11": {
+      "one": "stop sign",
+      "other": "stop signs"
+    },
+    "12": {
+      "one": "parking meter",
+      "other": "parking meters"
+    },
+    "13": {
+      "one": "bench",
+      "other": "benches"
+    },
+    "14": {
+      "one": "bird",
+      "other": "birds"
+    },
+    "15": {
+      "one": "cat",
+      "other": "cats"
+    },
+    "16": {
+      "one": "dog",
+      "other": "dogs"
+    },
+    "17": {
+      "one": "horse",
+      "other": "horses"
+    },
+    "18": {
+      "one": "sheep",
+      "other": "sheep"
+    },
+    "19": {
+      "one": "cow",
+      "other": "cows"
+    },
+    "20": {
+      "one": "elephant",
+      "other": "elephants"
+    },
+    "21": {
+      "one": "bear",
+      "other": "bears"
+    },
+    "22": {
+      "one": "zebra",
+      "other": "zebras"
+    },
+    "23": {
+      "one": "giraffe",
+      "other": "giraffes"
+    },
+    "24": {
+      "one": "backpack",
+      "other": "backpacks"
+    },
+    "25": {
+      "one": "umbrella",
+      "other": "umbrellas"
+    },
+    "26": {
+      "one": "handbag",
+      "other": "handbags"
+    },
+    "27": {
+      "one": "tie",
+      "other": "ties"
+    },
+    "28": {
+      "one": "suitcase",
+      "other": "suitcases"
+    },
+    "29": {
+      "one": "frisbee",
+      "other": "frisbees"
+    },
+    "30": {
+      "one": "skis",
+      "other": "skis"
+    },
+    "31": {
+      "one": "snowboard",
+      "other": "snowboards"
+    },
+    "32": {
+      "one": "sports ball",
+      "other": "sports balls"
+    },
+    "33": {
+      "one": "kite",
+      "other": "kites"
+    },
+    "34": {
+      "one": "baseball bat",
+      "other": "baseball bats"
+    },
+    "35": {
+      "one": "baseball glove",
+      "other": "baseball gloves"
+    },
+    "36": {
+      "one": "skateboard",
+      "other": "skateboards"
+    },
+    "37": {
+      "one": "surfboard",
+      "other": "surfboards"
+    },
+    "38": {
+      "one": "tennis racket",
+      "other": "tennis rackets"
+    },
+    "39": {
+      "one": "bottle",
+      "other": "bottles"
+    },
+    "40": {
+      "one": "wine glass",
+      "other": "wine glasses"
+    },
+    "41": {
+      "one": "cup",
+      "other": "cups"
+    },
+    "42": {
+      "one": "fork",
+      "other": "forks"
+    },
+    "43": {
+      "one": "knife",
+      "other": "knives"
+    },
+    "44": {
+      "one": "spoon",
+      "other": "spoons"
+    },
+    "45": {
+      "one": "bowl",
+      "other": "bowls"
+    },
+    "46": {
+      "one": "banana",
+      "other": "bananas"
+    },
+    "47": {
+      "one": "apple",
+      "other": "apples"
+    },
+    "48": {
+      "one": "sandwich",
+      "other": "sandwiches"
+    },
+    "49": {
+      "one": "orange",
+      "other": "oranges"
+    },
+    "50": {
+      "one": "broccoli",
+      "other": "broccolis"
+    },
+    "51": {
+      "one": "carrot",
+      "other": "carrots"
+    },
+    "52": {
+      "one": "hot dog",
+      "other": "hot dogs"
+    },
+    "53": {
+      "one": "pizza",
+      "other": "pizzas"
+    },
+    "54": {
+      "one": "donut",
+      "other": "donuts"
+    },
+    "55": {
+      "one": "cake",
+      "other": "cakes"
+    },
+    "56": {
+      "one": "chair",
+      "other": "chairs"
+    },
+    "57": {
+      "one": "couch",
+      "other": "couches"
+    },
+    "58": {
+      "one": "potted plant",
+      "other": "potted plants"
+    },
+    "59": {
+      "one": "bed",
+      "other": "beds"
+    },
+    "60": {
+      "one": "dining table",
+      "other": "dining tables"
+    },
+    "61": {
+      "one": "toilet",
+      "other": "toilets"
+    },
+    "62": {
+      "one": "tv",
+      "other": "tvs"
+    },
+    "63": {
+      "one": "laptop",
+      "other": "laptops"
+    },
+    "64": {
+      "one": "mouse",
+      "other": "mice"
+    },
+    "65": {
+      "one": "remote",
+      "other": "remotes"
+    },
+    "66": {
+      "one": "keyboard",
+      "other": "keyboards"
+    },
+    "67": {
+      "one": "cell phone",
+      "other": "cell phones"
+    },
+    "68": {
+      "one": "microwave",
+      "other": "microwaves"
+    },
+    "69": {
+      "one": "oven",
+      "other": "ovens"
+    },
+    "70": {
+      "one": "toaster",
+      "other": "toasters"
+    },
+    "71": {
+      "one": "sink",
+      "other": "sinks"
+    },
+    "72": {
+      "one": "refrigerator",
+      "other": "refrigerators"
+    },
+    "73": {
+      "one": "book",
+      "other": "books"
+    },
+    "74": {
+      "one": "clock",
+      "other": "clocks"
+    },
+    "75": {
+      "one": "vase",
+      "other": "vases"
+    },
+    "76": {
+      "one": "scissors",
+      "other": "scissorses"
+    },
+    "77": {
+      "one": "teddy bear",
+      "other": "teddy bears"
+    },
+    "78": {
+      "one": "hair drier",
+      "other": "hair driers"
+    },
+    "79": {
+      "one": "toothbrush",
+      "other": "toothbrushes"
+    }
+  }
+}
