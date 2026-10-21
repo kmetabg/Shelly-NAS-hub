@@ -19,6 +19,8 @@ services:
       NVR_CHANNELS:        "${NVR_CHANNELS:-}"
       NVR_NAMES:           "${NVR_NAMES:-}"
       NVR_CACHE_S:         "${NVR_CACHE_S:-10}"
+      # ── Language (Describe text; see app/locales/) ───────────────────
+      APP_LANG:            "${APP_LANG:-en}"
       # ── AI Detection ─────────────────────────────────────────────────
       NVR_DETECT_ENABLED:    "${NVR_DETECT_ENABLED:-true}"
       NVR_DETECT_MODEL:      "${NVR_DETECT_MODEL:-yolo26s.pt}"

@@ -51,6 +51,8 @@ logging.basicConfig(
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.INFO)
 
+from . import i18n  # след logging config — за да се вижда 'Locales loaded'
+
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
 
@@ -4222,57 +4224,30 @@ async def camera_detect_confidence(channel: int, body: DetectConfBody):
     return {"channel": channel, "min_confidence": mc}
 
 
-# COCO клас → Bulgarian label (всички 80 класа)
-_COCO_BG: dict[int, str] = {
-    0:"човек", 1:"велосипед", 2:"кола", 3:"мотор", 4:"самолет",
-    5:"автобус", 6:"влак", 7:"камион", 8:"лодка", 9:"светофар",
-    10:"пожарникарски кран", 11:"знак стоп", 12:"паркомет",
-    13:"пейка", 14:"птица", 15:"котка", 16:"куче", 17:"кон",
-    18:"овца", 19:"крава", 20:"слон", 21:"мечка", 22:"зебра",
-    23:"жираф", 24:"раница", 25:"чадър", 26:"чанта", 27:"вратовръзка",
-    28:"куфар", 29:"фризби", 30:"ски", 31:"сноуборд", 32:"спортна топка",
-    33:"хвърчило", 34:"бейзболна бухалка", 35:"бейзболна ръкавица",
-    36:"скейтборд", 37:"сърф", 38:"тенис ракета", 39:"бутилка",
-    40:"чаша вино", 41:"чаша", 42:"вилица", 43:"нож", 44:"лъжица",
-    45:"купа", 46:"банан", 47:"ябълка", 48:"сандвич", 49:"портокал",
-    50:"броколи", 51:"морков", 52:"хот-дог", 53:"пица", 54:"поничка",
-    55:"торта", 56:"стол", 57:"диван", 58:"саксия", 59:"легло",
-    60:"маса", 61:"тоалетна", 62:"телевизор", 63:"лаптоп",
-    64:"мишка", 65:"дистанционно", 66:"клавиатура", 67:"телефон",
-    68:"микровълнова", 69:"фурна", 70:"тостер", 71:"мивка",
-    72:"хладилник", 73:"книга", 74:"часовник", 75:"ваза",
-    76:"ножица", 77:"плюшена играчка", 78:"сешоар", 79:"четка за зъби",
-}
-
-# Количествено число → граматична форма (нула/ед.ч/мн.ч)
-def _bg_count(n: int, word_singular: str, word_plural: str) -> str:
-    if n == 1:
-        return f"1 {word_singular}"
-    return f"{n} {word_plural}"
-
-# Множествена форма за COCO labels (опростена)
-_COCO_BG_PLURAL: dict[int, str] = {
-    0:"човека", 2:"коли", 3:"мотора", 5:"автобуса", 7:"камиона",
-    15:"котки", 16:"кучета", 24:"раници", 56:"стола", 60:"маси",
-    62:"телевизора", 63:"лаптопа",
-}
+# Describe текстове → app/locales/<lang>.json (виж app/i18n.py)
+@app.get("/api/languages")
+async def list_languages():
+    """Налични езици за Describe + default (APP_LANG)."""
+    return {"default": i18n.resolve_lang(), "languages": i18n.available_languages()}
 
 
 @app.get("/api/camera/{channel}/describe")
-async def camera_describe(channel: int, hq: bool = False):
+async def camera_describe(request: Request, channel: int, hq: bool = False, lang: str | None = None):
     """
     On-demand YOLO описание на текущия кадър от камерата.
-    Връща Bulgarian текст с всички засечени обекти (80 COCO класа).
+    Връща текст на езика на потребителя (?lang= / Accept-Language / APP_LANG)
+    с всички засечени обекти (80 COCO класа).
     ?hq=1 → използва main stream snapshot за по-добро качество.
 
     Поддържа и NVR Dahua канали, и Extra IP камери (Reolink/IMOU).
     """
+    lang = i18n.resolve_lang(request, lang)
     if channel not in _all_valid_channels():
-        raise HTTPException(404, "Камерата не е намерена")
+        raise HTTPException(404, i18n.t(lang, "camera_not_found"))
 
     extra = _extra_cam(channel)
     if not extra and not nvr_settings.host:
-        raise HTTPException(404, "Камерата не е намерена")
+        raise HTTPException(404, i18n.t(lang, "camera_not_found"))
 
     loop = asyncio.get_running_loop()
     jpeg: bytes | None = None
@@ -4326,7 +4301,7 @@ async def camera_describe(channel: int, hq: bool = False):
             jpeg = cached[1]
 
     if not jpeg:
-        raise HTTPException(502, "Не може да се вземе снимка от камерата")
+        raise HTTPException(502, i18n.t(lang, "snapshot_failed"))
 
     # YOLO inference (всички 80 класа, по-нисък праг за описание)
     def _run_yolo(data: bytes) -> list[dict]:
@@ -4342,29 +4317,17 @@ async def camera_describe(channel: int, hq: bool = False):
             for box in r.boxes:
                 found.append({
                     "class_id":  int(box.cls[0]),
-                    "label":     _COCO_BG.get(int(box.cls[0]), str(int(box.cls[0]))),
+                    "label":     i18n.label(lang, int(box.cls[0])),
                     "conf":      round(float(box.conf[0]), 2),
                 })
         return found
 
     detections = await loop.run_in_executor(None, _run_yolo, jpeg)
 
-    if not detections:
-        description = "Нищо конкретно не се вижда в кадъра."
-    else:
-        # Групираме по клас и броим
-        from collections import Counter
-        counts = Counter(d["label"] for d in detections)
-        parts  = []
-        for label, n in counts.most_common():
-            cls_id = next((d["class_id"] for d in detections if d["label"] == label), -1)
-            plural = _COCO_BG_PLURAL.get(cls_id, label + ("а" if n > 1 else ""))
-            parts.append(_bg_count(n, label, plural))
-        description = "Виждам: " + ", ".join(parts) + "."
-
     return {
         "channel":     channel,
-        "description": description,
+        "lang":        lang,
+        "description": i18n.describe(lang, detections),
         "detections":  detections,
         "total":       len(detections),
     }
@@ -4567,13 +4530,15 @@ async def shelly_cam_ingest(request: Request):
 
 
 @app.post("/api/shelly-cam/describe")
-async def shelly_cam_describe(request: Request):
+async def shelly_cam_describe(request: Request, lang: str | None = None):
     """
-    Приема JPEG (octet-stream) и връща Bulgarian описание на съдържанието.
+    Приема JPEG (octet-stream) и връща описание на съдържанието
+    на езика на потребителя (?lang= / Accept-Language / APP_LANG).
     """
+    lang = i18n.resolve_lang(request, lang)
     body = await request.body()
     if not body or len(body) < 1000:
-        raise HTTPException(400, "Липсва JPEG тяло")
+        raise HTTPException(400, i18n.t(lang, "missing_jpeg"))
 
     def _run_yolo(data: bytes) -> list[dict]:
         import io as _io, numpy as _np
@@ -4587,7 +4552,7 @@ async def shelly_cam_describe(request: Request):
             for box in r.boxes:
                 found.append({
                     "class_id": int(box.cls[0]),
-                    "label":    _COCO_BG.get(int(box.cls[0]), str(int(box.cls[0]))),
+                    "label":    i18n.label(lang, int(box.cls[0])),
                     "conf":     round(float(box.conf[0]), 2),
                 })
         return found
@@ -4595,19 +4560,8 @@ async def shelly_cam_describe(request: Request):
     loop       = asyncio.get_running_loop()
     detections = await loop.run_in_executor(None, _run_yolo, body)
 
-    if not detections:
-        description = "Нищо конкретно не се вижда в кадъра."
-    else:
-        from collections import Counter
-        counts = Counter(d["label"] for d in detections)
-        parts  = []
-        for label, n in counts.most_common():
-            cls_id = next((d["class_id"] for d in detections if d["label"] == label), -1)
-            plural = _COCO_BG_PLURAL.get(cls_id, label + ("а" if n > 1 else ""))
-            parts.append(_bg_count(n, label, plural))
-        description = "Виждам: " + ", ".join(parts) + "."
-
-    return {"channel": SHELLY_CH, "description": description, "detections": detections}
+    return {"channel": SHELLY_CH, "lang": lang,
+            "description": i18n.describe(lang, detections), "detections": detections}
 
 
 @app.get("/api/camera/{channel}/snapshot")
